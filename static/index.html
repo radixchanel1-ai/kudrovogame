@@ -17,7 +17,13 @@ header{display:flex;justify-content:space-around;align-items:center;padding:6px 
 .stat b{display:block;font-size:16px}
 .stat span{color:var(--muted);font-size:10px}
 #topBtn{flex:0 0 auto;background:none;font-size:20px;padding:4px 8px}
-#map{flex:1;min-height:0;background:#0b1118}
+#map{flex:1;min-height:0;background:#0b1118;position:relative}
+#fx{position:absolute;inset:0;pointer-events:none;z-index:650;overflow:hidden}
+.fx{position:absolute;left:0;top:0;pointer-events:none;line-height:1;will-change:transform,opacity;filter:drop-shadow(0 2px 2px #000a)}
+.ring{position:absolute;left:0;top:0;border-radius:50%;border:4px solid #fff;pointer-events:none;box-sizing:border-box}
+.leaflet-interactive.flash{animation:flash .9s ease-out}
+@keyframes flash{0%,30%{fill-opacity:1;fill:#fff}100%{}}
+.banner{position:absolute;left:50%;top:38%;transform:translate(-50%,-50%);font-size:28px;font-weight:900;color:#fff;text-shadow:0 0 6px #000,0 0 12px #000;white-space:nowrap;pointer-events:none;z-index:651}
 .cl{pointer-events:none;width:0!important;height:0!important;overflow:visible}
 .lb{position:absolute;left:0;top:0;transform:translate(-50%,-50%);width:var(--lw,100px);font-size:var(--fs,12px);display:var(--ld,block);text-align:center;color:#fff;font-weight:800;line-height:1.1;white-space:normal;overflow-wrap:break-word;hyphens:auto;text-shadow:0 0 3px #000,0 0 3px #000,0 0 5px #000}
 .sw{display:inline-block;width:12px;height:12px;border-radius:50%;vertical-align:-1px;margin-right:5px;border:1px solid #0006}
@@ -264,8 +270,151 @@ $('editBtn').onclick = () => {
 };
 
 /* ---------- Сеть ---------- */
+/* ---------- Анимации ---------- */
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+function fxLayer() {
+  let l = $('fx');
+  if (!l) { l = document.createElement('div'); l.id = 'fx'; $('map').appendChild(l); }
+  return l;
+}
+const pt = id => map.latLngToContainerPoint(GRID.cells[id].center);
+function hexPx() {
+  const p = GRID.cells[0].poly;
+  return map.latLngToContainerPoint(p[1]).distanceTo(map.latLngToContainerPoint(p[4]));
+}
+const tr = (x, y, size, extra) => `translate(${x - size / 2}px,${y - size / 2}px)` + (extra ? ' ' + extra : '');
+function sprite(txt, x, y, size) {
+  const e = document.createElement('div'); e.className = 'fx'; e.textContent = txt;
+  e.style.fontSize = size + 'px'; e.style.transform = tr(x, y, size);
+  fxLayer().appendChild(e); return e;
+}
+function haptN(t) { try { tg && tg.HapticFeedback.notificationOccurred(t); } catch (e) {} }
+function flashCell(id) {
+  const el = polys[id] && polys[id].getElement && polys[id].getElement();
+  if (!el) return;
+  el.classList.remove('flash'); void el.getBBox(); el.classList.add('flash');
+  setTimeout(() => el.classList.remove('flash'), 950);
+}
+function ring(id, color) {
+  const c = pt(id), h = hexPx();
+  const r = document.createElement('div'); r.className = 'ring';
+  r.style.borderColor = color || '#fff'; r.style.width = r.style.height = h + 'px';
+  fxLayer().appendChild(r);
+  r.animate([{ transform: tr(c.x, c.y, h, 'scale(.2)'), opacity: 1 },
+             { transform: tr(c.x, c.y, h, 'scale(1.6)'), opacity: 0 }],
+            { duration: 700, easing: 'ease-out' }).onfinish = () => r.remove();
+}
+function banner(text, color) {
+  const b = document.createElement('div'); b.className = 'banner'; b.textContent = text;
+  if (color) b.style.color = color;
+  $('map').appendChild(b);
+  b.animate([{ transform: 'translate(-50%,-50%) scale(.3)', opacity: 0 },
+             { transform: 'translate(-50%,-50%) scale(1.15)', opacity: 1, offset: .25 },
+             { transform: 'translate(-50%,-50%) scale(1)', opacity: 1, offset: .75 },
+             { transform: 'translate(-50%,-70%) scale(1)', opacity: 0 }],
+            { duration: 1500, easing: 'ease-out' }).onfinish = () => b.remove();
+}
+/* армия летит дугой из своей соседней соты в цель */
+async function animFlight(fromId, toId, army) {
+  const a = pt(fromId), b = pt(toId), h = hexPx();
+  const size = Math.max(16, Math.min(34, h / 3));
+  const icons = [];
+  for (let i = 0; i < Math.min(army.t, 2); i++) icons.push('🛡');
+  for (let i = 0; i < Math.min(army.c, 3); i++) icons.push('💥');
+  for (let i = 0; i < Math.min(army.w, 7 - icons.length); i++) icons.push('🪖');
+  if (!icons.length) icons.push('🪖');
+  const lift = Math.max(40, a.distanceTo(b) * 0.6);
+  const jobs = icons.map((ic, i) => {
+    const jx = (Math.random() - .5) * h * .5, jy = (Math.random() - .5) * h * .4;
+    const e = sprite(ic, a.x, a.y, size);
+    const mx = (a.x + b.x) / 2 + jx, my = Math.min(a.y, b.y) - lift + jy;
+    const rot = b.x > a.x ? 15 : -15;
+    const an = e.animate([
+      { transform: tr(a.x + jx * .3, a.y + jy * .3, size, 'scale(.4)'), opacity: 0 },
+      { transform: tr(a.x + jx * .3, a.y + jy * .3, size, 'scale(1)'), opacity: 1, offset: .12 },
+      { transform: tr(mx, my, size, `scale(1.25) rotate(${rot}deg)`), opacity: 1, offset: .55 },
+      { transform: tr(b.x + jx * .4, b.y + jy * .4, size, 'scale(.9)'), opacity: 1 }
+    ], { duration: 850, delay: i * 70, easing: 'cubic-bezier(.4,0,.6,1)', fill: 'forwards' });
+    return new Promise(res => { an.onfinish = () => res(e); });
+  });
+  return Promise.all(jobs);
+}
+function animCapture(id, sprites, color) {
+  sprites.forEach(e => e.remove());
+  const c = pt(id), h = hexPx(), size = Math.max(16, Math.min(30, h / 3.2));
+  flashCell(id); ring(id, color); setTimeout(() => ring(id, '#ffd84a'), 150);
+  for (let i = 0; i < 10; i++) {
+    const ang = Math.PI * 2 * i / 10, d = h * (.55 + Math.random() * .35);
+    const e = sprite(i % 2 ? '🔥' : '✨', c.x, c.y, size * .8);
+    e.animate([{ transform: tr(c.x, c.y, size * .8, 'scale(.3)'), opacity: 1 },
+               { transform: tr(c.x + Math.cos(ang) * d, c.y + Math.sin(ang) * d, size * .8, 'scale(1)'), opacity: 0 }],
+              { duration: 700, easing: 'ease-out' }).onfinish = () => e.remove();
+  }
+  const fs = size * 1.6, fy = c.y - h * .1;
+  const f = sprite('🚩', c.x, fy, fs);
+  f.animate([{ transform: tr(c.x, fy, fs, 'scale(0)') },
+             { transform: tr(c.x, fy, fs, 'scale(1.3)'), offset: .3 },
+             { transform: tr(c.x, fy, fs, 'scale(1)'), opacity: 1, offset: .8 },
+             { transform: tr(c.x, fy, fs, 'scale(1)'), opacity: 0 }],
+            { duration: 1400, easing: 'ease-out' }).onfinish = () => f.remove();
+}
+function animRepelled(id, sprites) {
+  const c = pt(id), h = hexPx(), size = Math.max(20, Math.min(40, h / 2.5));
+  const sh = sprite('🛡', c.x, c.y, size);
+  sh.animate([{ transform: tr(c.x, c.y, size, 'scale(.3)'), opacity: 0 },
+              { transform: tr(c.x, c.y, size, 'scale(1.4)'), opacity: 1, offset: .3 },
+              { transform: tr(c.x, c.y, size, 'scale(1)'), opacity: 1, offset: .7 },
+              { transform: tr(c.x, c.y, size, 'scale(1)'), opacity: 0 }],
+             { duration: 1100 }).onfinish = () => sh.remove();
+  ring(id, '#e74c3c');
+  sprites.forEach((e, i) => {
+    const dx = (Math.random() - .5) * h, dy = h * (.6 + Math.random() * .4);
+    e.animate([{ transform: getComputedStyle(e).transform, opacity: 1 },
+               { transform: `translate(${c.x + dx}px,${c.y + dy}px) rotate(${(Math.random() - .5) * 360}deg) scale(.6)`, opacity: 0 }],
+              { duration: 650, delay: i * 30, easing: 'ease-in', fill: 'forwards' }).onfinish = () => e.remove();
+  });
+}
+async function animDefend(id, army) {
+  const c = pt(id), h = hexPx(), size = Math.max(16, Math.min(30, h / 3.2));
+  const n = Math.min(6, Math.max(1, army.w + army.c + army.t));
+  for (let i = 0; i < n; i++) {
+    const x = c.x + (Math.random() - .5) * h * .5, y = c.y + (Math.random() - .5) * h * .3;
+    const e = sprite(army.t > i ? '🛡' : army.c > i ? '💥' : '🪖', x, y, size);
+    e.animate([{ transform: tr(x, y - h, size), opacity: 0 },
+               { transform: tr(x, y, size), opacity: 1, offset: .5 },
+               { transform: tr(x, y - 6, size), opacity: 1, offset: .7 },
+               { transform: tr(x, y, size), opacity: 0 }],
+              { duration: 1100, delay: i * 80, easing: 'ease-out' }).onfinish = () => e.remove();
+  }
+  await sleep(500); ring(id, '#3498db'); flashCell(id);
+}
+/* чужие захваты, замеченные при обновлении карты */
+let prevOwners = null;
+const skipFx = new Set();
+function animForeignChanges(newCells) {
+  if (prevOwners && map) {
+    let n = 0;
+    for (const c of newCells) {
+      const was = prevOwners[c.id];
+      if (was === undefined || was === c.owner || c.owner == null || c.disabled || skipFx.has(c.id) || n >= 5) continue;
+      n++;
+      setTimeout(() => {
+        flashCell(c.id); ring(c.id, c.color || '#fff');
+        const p = pt(c.id), s = Math.max(16, Math.min(28, hexPx() / 3.2));
+        const e = sprite('⚔️', p.x, p.y, s);
+        e.animate([{ opacity: 0, transform: tr(p.x, p.y, s, 'scale(.3)') },
+                   { opacity: 1, transform: tr(p.x, p.y, s, 'scale(1.3)'), offset: .3 },
+                   { opacity: 0, transform: tr(p.x, p.y, s, 'scale(1)') }], { duration: 1200 }).onfinish = () => e.remove();
+        if (was != null && was === myTeam()) { toast('⚠️ «' + (c.ownerName || 'Враг') + '» захватила вашу соту!'); haptN('warning'); }
+      }, n * 250);
+    }
+  }
+  skipFx.clear();
+  prevOwners = {}; for (const c of newCells) prevOwners[c.id] = c.owner;
+}
+
 async function refresh() {
-  try { ST = await api('/api/state'); renderAll(); }
+  try { const s = await api('/api/state'); animForeignChanges(s.cells); ST = s; renderAll(); }
   catch (e) { toast(e.message); }
 }
 async function flush() {
@@ -275,13 +424,36 @@ async function flush() {
   catch (e) { toast(e.message); }
   inflight = 0; renderHUD(); if (sel != null) renderInfo();
 }
+let busy = false;
 async function act(path, body) {
-  while (inflight) await new Promise(r => setTimeout(r, 100));
-  await flush();
+  if (busy) return; busy = true;
   try {
-    const r = await api(path, body); ST = r.state; renderAll();
-    if (r.msg) toast(r.msg); haptic('heavy');
-  } catch (e) { toast(e.message); }
+    while (inflight) await sleep(100);
+    await flush();
+    const id = body.cell, army = reserve();
+    let flight = null;
+    if (path === '/api/attack' && id != null) {
+      const from = GRID.neighbors[id].filter(n => cellById[n] && cellById[n].owner === myTeam())
+        .sort((x, y) => pt(x).distanceTo(pt(id)) - pt(y).distanceTo(pt(id)))[0];
+      if (from != null) { haptic('medium'); flight = animFlight(from, id, army); }
+    }
+    if (path === '/api/defend' && id != null) animDefend(id, army);
+    let r;
+    try { r = await api(path, body); }
+    catch (e) { if (flight) (await flight).forEach(el => el.remove()); toast(e.message); return; }
+    if (flight) {
+      const sprites = await flight;
+      const tc = r.state.cells.find(c => c.id === id);
+      const won = r.state.team && tc && tc.owner === r.state.team.id;
+      if (won) { animCapture(id, sprites, r.state.team.color); banner('ЗАХВАЧЕНО!', '#ffd84a'); haptN('success'); }
+      else { animRepelled(id, sprites); banner('ОТБИТО', '#ff6b5b'); haptN('error'); }
+      await sleep(250);
+    } else haptic('heavy');
+    if (id != null) skipFx.add(id);
+    animForeignChanges(r.state.cells);
+    ST = r.state; renderAll();
+    if (r.msg) toast(r.msg);
+  } finally { busy = false; }
 }
 
 /* ---------- Действия ---------- */
