@@ -1,0 +1,247 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<title>Захват Кудрово</title>
+<script src="https://telegram.org/js/telegram-web-app.js"></script>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<style>
+:root{--bg:#0f1720;--panel:#18222e;--text:#e8eef5;--muted:#8a9bb0;--accent:#f1c40f;--me:#2ecc71}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent;user-select:none;-webkit-user-select:none}
+html,body{margin:0;height:100%;background:var(--bg);color:var(--text);font-family:-apple-system,system-ui,Roboto,sans-serif;overflow:hidden;touch-action:manipulation}
+#app{display:flex;flex-direction:column;height:100%}
+header{display:flex;justify-content:space-around;align-items:center;padding:8px 4px;background:var(--panel)}
+.stat{text-align:center}
+.stat b{display:block;font-size:17px}
+.stat span{color:var(--muted);font-size:11px}
+#topBtn{flex:0 0 auto;background:none;font-size:20px;padding:4px 8px}
+#map{flex:1;min-height:0;background:#0b1118}
+.cl{pointer-events:none;text-align:center;color:#fff;font-weight:700;font-size:12px;line-height:1.1;text-shadow:0 0 3px #000,0 0 3px #000}
+.cl small{display:block;font-size:9px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#info{background:var(--panel);padding:10px 12px;min-height:104px}
+.title{font-weight:700;font-size:16px;display:flex;justify-content:space-between;align-items:center;gap:8px}
+.tag{font-size:11px;padding:3px 8px;border-radius:20px;font-weight:600;white-space:nowrap;max-width:50%;overflow:hidden;text-overflow:ellipsis}
+.sub{color:var(--muted);font-size:13px;margin:4px 0 8px;line-height:1.35}
+.btns{display:flex;gap:8px}
+button{flex:1;border:0;border-radius:10px;padding:10px;font-size:14px;font-weight:600;color:#fff;background:#2c3a4b;font-family:inherit}
+button.primary{background:#27ae60}
+button.danger{background:#c0392b}
+button:disabled{opacity:.4}
+#tapRow{display:flex;align-items:center;gap:14px;padding:10px 14px 16px;background:var(--bg)}
+#bars{flex:1;display:flex;flex-direction:column;gap:7px}
+.bar{font-size:11px;color:var(--muted)}
+.track{height:7px;background:#243140;border-radius:4px;overflow:hidden;margin-top:2px}
+.fill{height:100%;background:var(--me);width:0;transition:width .1s}
+#tapBtn{flex:0 0 112px;height:112px;border-radius:50%;font-size:20px;background:radial-gradient(circle at 35% 30%,#4be38f,#1e8f4e);box-shadow:0 6px 0 #146b39}
+#tapBtn:active{transform:translateY(4px);box-shadow:0 2px 0 #146b39}
+.float{position:fixed;pointer-events:none;font-weight:800;color:var(--accent);animation:up .9s ease-out forwards;font-size:16px;z-index:1000}
+@keyframes up{to{transform:translateY(-60px);opacity:0}}
+#toast{position:fixed;left:50%;top:64px;transform:translateX(-50%);background:#000d;padding:8px 14px;border-radius:10px;font-size:13px;opacity:0;transition:opacity .3s;z-index:1001;max-width:90%;text-align:center;pointer-events:none}
+.modal{position:fixed;inset:0;background:#000a;display:none;align-items:center;justify-content:center;z-index:1002}
+.modal .box{background:var(--panel);padding:16px;border-radius:14px;width:86%;max-width:340px}
+.modal input{width:100%;padding:10px;border-radius:8px;border:1px solid #33465b;background:#0f1720;color:var(--text);font-size:16px;margin:10px 0;user-select:text;-webkit-user-select:text}
+#topList{margin:10px 0;padding-left:22px;font-size:14px;line-height:1.7}
+</style>
+</head>
+<body>
+<div id="app">
+  <header>
+    <div class="stat"><b id="sW">0</b><span>🪖 воины</span></div>
+    <div class="stat"><b id="sC">0</b><span>💥 пушки</span></div>
+    <div class="stat"><b id="sT">0</b><span>🛡 танки</span></div>
+    <div class="stat"><b id="sP">0</b><span>⚔️ сила</span></div>
+    <div class="stat"><b id="sM">0</b><span>🗺 районы</span></div>
+    <button id="topBtn" title="Рейтинг">🏆</button>
+  </header>
+  <div id="map"></div>
+  <div id="info"><div class="sub">Загрузка…</div></div>
+  <div id="tapRow">
+    <div id="bars">
+      <div class="bar">До воина: <span id="bW"></span><div class="track"><div class="fill" id="fW"></div></div></div>
+      <div class="bar">До пушки: <span id="bC"></span><div class="track"><div class="fill" id="fC"></div></div></div>
+      <div class="bar">До танка: <span id="bT"></span><div class="track"><div class="fill" id="fT"></div></div></div>
+    </div>
+    <button id="tapBtn">ТАП</button>
+  </div>
+</div>
+<div id="toast"></div>
+<div class="modal" id="nameModal"><div class="box">
+  <div class="title">Название района</div>
+  <input id="nameInput" maxlength="30" placeholder="Например: Мой район">
+  <div class="btns"><button id="nCancel">Отмена</button><button class="primary" id="nOk">Сохранить</button></div>
+</div></div>
+<div class="modal" id="topModal"><div class="box">
+  <div class="title">🏆 Рейтинг</div>
+  <ol id="topList"></ol>
+  <div class="btns"><button id="tClose">Закрыть</button></div>
+</div></div>
+
+<script>
+const tg = window.Telegram && window.Telegram.WebApp;
+if (tg) { tg.ready(); tg.expand(); }
+const initData = tg ? tg.initData : '';
+const $ = id => document.getElementById(id);
+const esc = s => String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+
+let GRID = null, ST = null, sel = null, pending = 0, inflight = 0;
+let map, polys = {}, labels = {}, cellById = {};
+const NEUTRAL = '#5b6b7d', MINE = '#2ecc71';
+
+async function api(path, body = {}) {
+  const r = await fetch(path, { method: 'POST', headers: { 'Content-Type': 'application/json' },
+                               body: JSON.stringify({ initData, ...body }) });
+  const j = await r.json().catch(() => ({ error: 'Ошибка сети' }));
+  if (!r.ok || j.error) throw new Error(j.error || 'Ошибка сервера');
+  return j;
+}
+function haptic(t) { try { tg && tg.HapticFeedback.impactOccurred(t || 'light'); } catch (e) {} }
+function toast(msg) {
+  const t = $('toast'); t.textContent = msg; t.style.opacity = 1;
+  clearTimeout(toast.h); toast.h = setTimeout(() => t.style.opacity = 0, 2400);
+}
+function floatText(txt, x, y) {
+  const f = document.createElement('div'); f.className = 'float'; f.textContent = txt;
+  f.style.left = (x - 20) + 'px'; f.style.top = (y - 30) + 'px';
+  document.body.appendChild(f); setTimeout(() => f.remove(), 900);
+}
+const ownerColor = id => id == null ? NEUTRAL : (ST && id === ST.me.id ? MINE : `hsl(${(Number(id) * 137) % 360} 70% 50%)`);
+const cellName = c => c.name || ('Район ' + (c.id + 1));
+
+/* армия с учётом тапов, ещё не отправленных на сервер */
+function army() {
+  const m = ST.me, T = m.taps + pending + inflight;
+  const d = n => Math.floor(T / n) - Math.floor(m.taps / n);
+  const w = m.w + d(10), c = m.c + d(100), t = m.t + d(1000);
+  return { T, w, c, t, power: w + c * 10 + t * 100 };
+}
+
+/* ---------- Отрисовка ---------- */
+function renderMap() {
+  for (const c of ST.cells) {
+    const p = polys[c.id]; if (!p) continue;
+    const col = ownerColor(c.owner);
+    p.setStyle({ fillColor: col, fillOpacity: c.owner == null ? 0.25 : 0.55,
+                 color: sel === c.id ? '#f1c40f' : '#1b2633', weight: sel === c.id ? 4 : 1.5 });
+    const el = labels[c.id].getElement();
+    if (el) el.innerHTML = `${c.def}<small>${esc(c.name || '')}</small>`;
+  }
+}
+function renderHUD() {
+  const a = army();
+  $('sW').textContent = a.w; $('sC').textContent = a.c; $('sT').textContent = a.t;
+  $('sP').textContent = a.power;
+  $('sM').textContent = ST.cells.filter(c => c.owner === ST.me.id).length;
+  for (const [k, n] of [['W', 10], ['C', 100], ['T', 1000]]) {
+    $('b' + k).textContent = (n - a.T % n) + ' тап.';
+    $('f' + k).style.width = (a.T % n) / n * 100 + '%';
+  }
+}
+function canAttack(id) {
+  const mine = ST.cells.filter(c => c.owner === ST.me.id);
+  if (!mine.length) return true;
+  return GRID.neighbors[id].some(n => cellById[n] && cellById[n].owner === ST.me.id);
+}
+function renderInfo() {
+  const box = $('info');
+  if (sel == null) {
+    box.innerHTML = '<div class="title">Захват Кудрово</div><div class="sub">Выбери район на карте. Тапай, чтобы собрать армию: 10 тапов — воин, 100 — пушка, 1000 — танк. Первый район можно взять где угодно, дальше — только соседние.</div>';
+    return;
+  }
+  const c = cellById[sel], own = c.owner === ST.me.id, a = army();
+  const ownerTxt = c.owner == null ? 'Свободный' : (own ? 'Твой' : c.ownerName || 'Игрок');
+  box.innerHTML = `<div class="title"><span>${esc(cellName(c))}</span><span class="tag" style="background:${ownerColor(c.owner)}">${esc(ownerTxt)}</span></div>
+    <div class="sub">Оборона: <b>${c.def}</b> · Твоя сила: <b>${a.power}</b></div><div class="btns" id="iBtns"></div>`;
+  const btns = $('iBtns');
+  const mk = (txt, cls, fn, dis) => { const b = document.createElement('button'); b.textContent = txt; if (cls) b.className = cls; b.disabled = !!dis; b.onclick = fn; btns.appendChild(b); };
+  if (own) {
+    mk('🛡 Укрепить (+' + a.power + ')', 'primary', () => act('/api/fortify', { cell: sel }), a.power === 0);
+  } else {
+    const ok = canAttack(sel);
+    mk(ok ? '⚔️ Атаковать' : 'Нет общей границы', a.power > c.def ? 'primary' : 'danger',
+       () => act('/api/attack', { cell: sel }), !ok || a.power === 0);
+  }
+  if (ST.admin) mk('✏️ Название', '', () => openName(sel));
+}
+function renderAll() {
+  cellById = {}; for (const c of ST.cells) cellById[c.id] = c;
+  renderMap(); renderHUD(); renderInfo();
+}
+
+/* ---------- Сеть ---------- */
+async function refresh() {
+  try { ST = await api('/api/state'); renderAll(); }
+  catch (e) { toast(e.message); }
+}
+async function flush() {
+  if (!pending || inflight) return;
+  inflight = pending; pending = 0;
+  try { const r = await api('/api/tap', { n: inflight }); ST.me = r.me; }
+  catch (e) { toast(e.message); }
+  inflight = 0; renderHUD(); if (sel != null) renderInfo();
+}
+async function act(path, body) {
+  while (inflight) await new Promise(r => setTimeout(r, 100));
+  await flush();
+  try {
+    const r = await api(path, body); ST = r.state; renderAll();
+    if (r.msg) toast(r.msg); haptic('heavy');
+  } catch (e) { toast(e.message); }
+}
+
+/* ---------- Действия ---------- */
+$('tapBtn').addEventListener('pointerdown', e => {
+  if (!ST) return;
+  const before = army();
+  pending++;
+  const a = army();
+  floatText('+1', e.clientX, e.clientY);
+  if (a.w > before.w) floatText('🪖 +воин', e.clientX, e.clientY - 20);
+  if (a.c > before.c) { toast('💥 Новая пушка! (+10 силы)'); haptic('medium'); }
+  if (a.t > before.t) { toast('🛡 Новый танк! (+100 силы)'); haptic('heavy'); }
+  haptic('light'); renderHUD(); if (sel != null) renderInfo();
+});
+
+let nameIdx = null;
+function openName(id) {
+  nameIdx = id; $('nameInput').value = cellById[id].name || '';
+  $('nameModal').style.display = 'flex'; setTimeout(() => $('nameInput').focus(), 50);
+}
+$('nCancel').onclick = () => $('nameModal').style.display = 'none';
+$('nOk').onclick = () => {
+  $('nameModal').style.display = 'none';
+  act('/api/name', { cell: nameIdx, name: $('nameInput').value });
+};
+$('nameInput').addEventListener('keydown', e => { if (e.key === 'Enter') $('nOk').click(); });
+
+$('topBtn').onclick = () => {
+  if (!ST) return;
+  $('topList').innerHTML = ST.top.length
+    ? ST.top.map(r => `<li>${esc(r.name)} — ${r.n}</li>`).join('')
+    : '<li>Пока никто ничего не захватил</li>';
+  $('topModal').style.display = 'flex';
+};
+$('tClose').onclick = () => $('topModal').style.display = 'none';
+
+/* ---------- Старт ---------- */
+(async function init() {
+  GRID = await (await fetch('/api/grid')).json();
+  map = L.map('map', { zoomControl: false, maxBounds: GRID.bounds, minZoom: 13 }).fitBounds(GRID.bounds);
+  L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+              { maxZoom: 18, attribution: '© OpenStreetMap' }).addTo(map);
+  for (const c of GRID.cells) {
+    const p = L.polygon(c.poly, { fillColor: NEUTRAL, fillOpacity: 0.25, color: '#1b2633', weight: 1.5 }).addTo(map);
+    p.on('click', () => { if (!ST) return; sel = c.id; haptic(); renderAll(); });
+    polys[c.id] = p;
+    labels[c.id] = L.marker(c.center, { interactive: false,
+      icon: L.divIcon({ className: 'cl', html: '', iconSize: [70, 28], iconAnchor: [35, 14] }) }).addTo(map);
+  }
+  if (!initData) { $('info').innerHTML = '<div class="sub">Открой игру через бота в Telegram.</div>'; return; }
+  await refresh();
+  setInterval(flush, 1000);
+  setInterval(() => { if (!inflight) refresh(); }, 4000);
+})();
+</script>
+</body>
+</html>
