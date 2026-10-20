@@ -126,15 +126,16 @@ function askConfirm(title, text, yes) {
 $('cNo').onclick = () => $('confirmModal').style.display = 'none';
 
 const pw = o => o.w + o.c * 10 + o.t * 100;
+const myTeam = () => ST && ST.team ? ST.team.id : null;
 const ownerColor = c => c.disabled ? OFF : c.owner == null ? FREE
-  : (ST && c.owner === ST.me.id ? MINE : `hsl(${(Number(c.owner) * 137) % 360} 70% 50%)`);
+  : (c.owner === myTeam() ? MINE : `hsl(${(Number(c.owner) * 137) % 360} 70% 50%)`);
 const cellName = c => c.name || ('Территория ' + (c.id + 1));
-const myCells = () => ST.cells.filter(c => c.owner === ST.me.id);
+const myCells = () => myTeam() == null ? [] : ST.cells.filter(c => c.owner === myTeam());
 const army = c => `${c.w} 🪖 · ${c.c} 💥 · ${c.t} 🛡`;
 
-/* резерв с учётом тапов, ещё не отправленных на сервер */
+/* общий резерв команды с учётом тапов, ещё не отправленных на сервер */
 function reserve() {
-  const m = ST.me, T = m.taps + pending + inflight;
+  const m = ST.team || { taps: 0, rw: 0, rc: 0, rt: 0 }, T = m.taps + pending + inflight;
   const d = n => Math.floor(T / n) - Math.floor(m.taps / n);
   const r = { T, w: m.rw + d(10), c: m.rc + d(100), t: m.rt + d(1000) };
   r.power = pw(r); return r;
@@ -163,27 +164,31 @@ function renderHUD() {
     $('f' + k).style.width = (r.T % n) / n * 100 + '%';
   }
   const h = $('hint');
-  if (!myCells().length) {
+  if (!ST.team) {
     h.style.display = 'block';
-    h.textContent = ST.me.home != null && ST.me.taps > 0
-      ? 'Ты потерял все территории. Выбери новую свободную территорию на карте.'
-      : '👆 Выбери на карте свою территорию — нажми на свободную серую соту';
+    h.textContent = ST.me.taps > 0
+      ? 'Твоя команда потеряла все территории. Выбери территорию заново.'
+      : '👆 Выбери территорию: серая сота — основать свою, цветная — вступить в команду';
   } else h.style.display = 'none';
 }
 function adjacentToMe(id) {
-  return GRID.neighbors[id].some(n => cellById[n] && cellById[n].owner === ST.me.id);
+  return GRID.neighbors[id].some(n => cellById[n] && cellById[n].owner === myTeam());
 }
 function renderInfo() {
   const box = $('info');
   if (sel == null) {
-    box.innerHTML = '<div class="title">Захват Кудрово</div><div class="sub">Тапай, чтобы собрать армию: 10 тапов — воин, 100 — пушка, 1000 — танк. Отправляй резерв в защиту своей территории или в атаку на соседнюю. Захватил территорию — её защитники переходят к тебе.</div>';
+    const t = ST.team;
+    box.innerHTML = t
+      ? `<div class="title"><span>🏠 ${esc(t.name)}</span><span class="tag" style="background:${MINE}">👥 ${t.members}</span></div><div class="sub">Тапы всей команды складываются: 10 — воин, 100 — пушка, 1000 — танк. Выбери соту на карте: свою — чтобы отправить резерв в защиту, соседнюю — чтобы атаковать.</div>`
+      : '<div class="title">Захват Кудрово</div><div class="sub">Выбери территорию на карте. Серая — основать свою, цветная — вступить в команду. Тапы команды складываются, так быстрее копятся пушки и танки.</div>';
     return;
   }
-  const c = cellById[sel], r = reserve(), own = c.owner === ST.me.id, hasLand = myCells().length > 0;
-  const ownerTxt = c.disabled ? 'Не в игре' : c.owner == null ? 'Свободная' : own ? 'Твоя' : (c.ownerName || 'Игрок');
+  const c = cellById[sel], r = reserve(), own = c.owner != null && c.owner === myTeam(), hasLand = !!ST.team;
+  const ownerTxt = c.disabled ? 'Не в игре' : c.owner == null ? 'Свободная'
+    : (own ? 'Ваша · ' : '') + (c.ownerName || 'Команда') + ' · 👥' + c.members;
   let sub;
   if (c.disabled) sub = 'Эта территория не входит в Кудрово.';
-  else sub = `Защита: <b>${pw(c)}</b> (${army(c)})<br>Твой резерв: <b>${r.power}</b>`;
+  else sub = `Защита: <b>${pw(c)}</b> (${army(c)})` + (hasLand ? `<br>Резерв команды: <b>${r.power}</b>` : '');
   box.innerHTML = `<div class="title"><span>${c.home ? '🏠 ' : ''}${esc(cellName(c))}</span><span class="tag" style="background:${ownerColor(c)}">${esc(ownerTxt)}</span></div>
     <div class="sub">${sub}</div><div class="btns" id="iBtns"></div>`;
   const btns = $('iBtns');
@@ -191,10 +196,12 @@ function renderInfo() {
 
   if (!c.disabled) {
     if (!hasLand) {
-      if (c.owner == null) mk('🏠 Выбрать своей территорией', 'primary', () => askConfirm(
-        'Выбрать «' + cellName(c) + '»?', 'Это будет твоя территория. Сменить её потом будет нельзя.',
+      if (c.owner == null) mk('🏠 Основать здесь территорию', 'primary', () => askConfirm(
+        'Основать «' + cellName(c) + '»?', 'Это будет твоя территория. Друзья смогут вступить к тебе. Сменить потом нельзя.',
         () => act('/api/choose', { cell: c.id })));
-      else mk('Занята — выбери свободную', '', null, true);
+      else mk('🤝 Вступить в «' + c.ownerName + '»', 'primary', () => askConfirm(
+        'Вступить в «' + c.ownerName + '»?', 'Ваши тапы будут складываться в общую армию. Сменить команду потом нельзя.',
+        () => act('/api/choose', { cell: c.id })));
     } else if (own) {
       mk('🛡 В защиту (+' + r.power + ')', 'blue', () => act('/api/defend', { cell: c.id }), r.power === 0);
     } else {
@@ -241,7 +248,7 @@ async function refresh() {
 async function flush() {
   if (!pending || inflight) return;
   inflight = pending; pending = 0;
-  try { const r = await api('/api/tap', { n: inflight }); ST.me = r.me; }
+  try { const r = await api('/api/tap', { n: inflight }); ST.team = Object.assign(ST.team || {}, r.team); }
   catch (e) { toast(e.message); }
   inflight = 0; renderHUD(); if (sel != null) renderInfo();
 }
@@ -257,6 +264,7 @@ async function act(path, body) {
 /* ---------- Действия ---------- */
 $('tapBtn').addEventListener('pointerdown', e => {
   if (!ST) return;
+  if (!ST.team) { toast('Сначала выбери территорию на карте'); return; }
   const before = reserve();
   pending++;
   const a = reserve();
@@ -282,7 +290,7 @@ $('nameInput').addEventListener('keydown', e => { if (e.key === 'Enter') $('nOk'
 $('topBtn').onclick = () => {
   if (!ST) return;
   $('topList').innerHTML = ST.top.length
-    ? ST.top.map(r => `<li>${esc(r.name)} — ${r.n}</li>`).join('')
+    ? ST.top.map(r => `<li>${esc(r.name)} — ${r.n} 🗺 · ${r.members} 👥</li>`).join('')
     : '<li>Пока никто ничего не захватил</li>';
   $('topModal').style.display = 'flex';
 };
