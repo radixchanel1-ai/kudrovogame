@@ -12,29 +12,33 @@
 *{box-sizing:border-box;-webkit-tap-highlight-color:transparent;user-select:none;-webkit-user-select:none}
 html,body{margin:0;height:100%;background:var(--bg);color:var(--text);font-family:-apple-system,system-ui,Roboto,sans-serif;overflow:hidden;touch-action:manipulation}
 #app{display:flex;flex-direction:column;height:100%}
-header{display:flex;justify-content:space-around;align-items:center;padding:8px 4px;background:var(--panel)}
+header{display:flex;justify-content:space-around;align-items:center;padding:6px 4px;background:var(--panel)}
 .stat{text-align:center}
-.stat b{display:block;font-size:17px}
-.stat span{color:var(--muted);font-size:11px}
+.stat b{display:block;font-size:16px}
+.stat span{color:var(--muted);font-size:10px}
 #topBtn{flex:0 0 auto;background:none;font-size:20px;padding:4px 8px}
 #map{flex:1;min-height:0;background:#0b1118}
 .cl{pointer-events:none;text-align:center;color:#fff;font-weight:700;font-size:12px;line-height:1.1;text-shadow:0 0 3px #000,0 0 3px #000}
 .cl small{display:block;font-size:9px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-#info{background:var(--panel);padding:10px 12px;min-height:104px}
+#hint{background:#7a5c00;color:#fff;font-size:13px;padding:7px 12px;text-align:center;display:none}
+#info{background:var(--panel);padding:10px 12px;min-height:112px}
 .title{font-weight:700;font-size:16px;display:flex;justify-content:space-between;align-items:center;gap:8px}
 .tag{font-size:11px;padding:3px 8px;border-radius:20px;font-weight:600;white-space:nowrap;max-width:50%;overflow:hidden;text-overflow:ellipsis}
 .sub{color:var(--muted);font-size:13px;margin:4px 0 8px;line-height:1.35}
-.btns{display:flex;gap:8px}
-button{flex:1;border:0;border-radius:10px;padding:10px;font-size:14px;font-weight:600;color:#fff;background:#2c3a4b;font-family:inherit}
+.sub b{color:var(--text)}
+.btns{display:flex;gap:8px;flex-wrap:wrap}
+button{flex:1;border:0;border-radius:10px;padding:10px;font-size:14px;font-weight:600;color:#fff;background:#2c3a4b;font-family:inherit;min-width:0}
 button.primary{background:#27ae60}
 button.danger{background:#c0392b}
+button.blue{background:#2f6fb0}
+button.small{flex:0 0 auto;font-size:12px;padding:8px 10px}
 button:disabled{opacity:.4}
 #tapRow{display:flex;align-items:center;gap:14px;padding:10px 14px 16px;background:var(--bg)}
 #bars{flex:1;display:flex;flex-direction:column;gap:7px}
 .bar{font-size:11px;color:var(--muted)}
 .track{height:7px;background:#243140;border-radius:4px;overflow:hidden;margin-top:2px}
 .fill{height:100%;background:var(--me);width:0;transition:width .1s}
-#tapBtn{flex:0 0 112px;height:112px;border-radius:50%;font-size:20px;background:radial-gradient(circle at 35% 30%,#4be38f,#1e8f4e);box-shadow:0 6px 0 #146b39}
+#tapBtn{flex:0 0 108px;height:108px;border-radius:50%;font-size:20px;background:radial-gradient(circle at 35% 30%,#4be38f,#1e8f4e);box-shadow:0 6px 0 #146b39}
 #tapBtn:active{transform:translateY(4px);box-shadow:0 2px 0 #146b39}
 .float{position:fixed;pointer-events:none;font-weight:800;color:var(--accent);animation:up .9s ease-out forwards;font-size:16px;z-index:1000}
 @keyframes up{to{transform:translateY(-60px);opacity:0}}
@@ -42,6 +46,7 @@ button:disabled{opacity:.4}
 .modal{position:fixed;inset:0;background:#000a;display:none;align-items:center;justify-content:center;z-index:1002}
 .modal .box{background:var(--panel);padding:16px;border-radius:14px;width:86%;max-width:340px}
 .modal input{width:100%;padding:10px;border-radius:8px;border:1px solid #33465b;background:#0f1720;color:var(--text);font-size:16px;margin:10px 0;user-select:text;-webkit-user-select:text}
+.modal p{color:var(--muted);font-size:14px;line-height:1.4}
 #topList{margin:10px 0;padding-left:22px;font-size:14px;line-height:1.7}
 </style>
 </head>
@@ -51,10 +56,11 @@ button:disabled{opacity:.4}
     <div class="stat"><b id="sW">0</b><span>🪖 воины</span></div>
     <div class="stat"><b id="sC">0</b><span>💥 пушки</span></div>
     <div class="stat"><b id="sT">0</b><span>🛡 танки</span></div>
-    <div class="stat"><b id="sP">0</b><span>⚔️ сила</span></div>
-    <div class="stat"><b id="sM">0</b><span>🗺 районы</span></div>
+    <div class="stat"><b id="sP">0</b><span>⚔️ резерв</span></div>
+    <div class="stat"><b id="sM">0</b><span>🗺 террит.</span></div>
     <button id="topBtn" title="Рейтинг">🏆</button>
   </header>
+  <div id="hint"></div>
   <div id="map"></div>
   <div id="info"><div class="sub">Загрузка…</div></div>
   <div id="tapRow">
@@ -68,9 +74,14 @@ button:disabled{opacity:.4}
 </div>
 <div id="toast"></div>
 <div class="modal" id="nameModal"><div class="box">
-  <div class="title">Название района</div>
+  <div class="title">Название территории</div>
   <input id="nameInput" maxlength="30" placeholder="Например: Мой район">
   <div class="btns"><button id="nCancel">Отмена</button><button class="primary" id="nOk">Сохранить</button></div>
+</div></div>
+<div class="modal" id="confirmModal"><div class="box">
+  <div class="title" id="cTitle"></div>
+  <p id="cText"></p>
+  <div class="btns"><button id="cNo">Отмена</button><button class="primary" id="cYes">Да</button></div>
 </div></div>
 <div class="modal" id="topModal"><div class="box">
   <div class="title">🏆 Рейтинг</div>
@@ -87,7 +98,7 @@ const esc = s => String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>'
 
 let GRID = null, ST = null, sel = null, pending = 0, inflight = 0;
 let map, polys = {}, labels = {}, cellById = {};
-const NEUTRAL = '#5b6b7d', MINE = '#2ecc71';
+const FREE = '#5b6b7d', MINE = '#2ecc71', OFF = '#111820';
 
 async function api(path, body = {}) {
   const r = await fetch(path, { method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -99,70 +110,99 @@ async function api(path, body = {}) {
 function haptic(t) { try { tg && tg.HapticFeedback.impactOccurred(t || 'light'); } catch (e) {} }
 function toast(msg) {
   const t = $('toast'); t.textContent = msg; t.style.opacity = 1;
-  clearTimeout(toast.h); toast.h = setTimeout(() => t.style.opacity = 0, 2400);
+  clearTimeout(toast.h); toast.h = setTimeout(() => t.style.opacity = 0, 2600);
 }
 function floatText(txt, x, y) {
   const f = document.createElement('div'); f.className = 'float'; f.textContent = txt;
   f.style.left = (x - 20) + 'px'; f.style.top = (y - 30) + 'px';
   document.body.appendChild(f); setTimeout(() => f.remove(), 900);
 }
-const ownerColor = id => id == null ? NEUTRAL : (ST && id === ST.me.id ? MINE : `hsl(${(Number(id) * 137) % 360} 70% 50%)`);
-const cellName = c => c.name || ('Район ' + (c.id + 1));
+function askConfirm(title, text, yes) {
+  $('cTitle').textContent = title; $('cText').textContent = text;
+  $('confirmModal').style.display = 'flex';
+  $('cYes').onclick = () => { $('confirmModal').style.display = 'none'; yes(); };
+}
+$('cNo').onclick = () => $('confirmModal').style.display = 'none';
 
-/* армия с учётом тапов, ещё не отправленных на сервер */
-function army() {
+const pw = o => o.w + o.c * 10 + o.t * 100;
+const ownerColor = c => c.disabled ? OFF : c.owner == null ? FREE
+  : (ST && c.owner === ST.me.id ? MINE : `hsl(${(Number(c.owner) * 137) % 360} 70% 50%)`);
+const cellName = c => c.name || ('Территория ' + (c.id + 1));
+const myCells = () => ST.cells.filter(c => c.owner === ST.me.id);
+const army = c => `${c.w} 🪖 · ${c.c} 💥 · ${c.t} 🛡`;
+
+/* резерв с учётом тапов, ещё не отправленных на сервер */
+function reserve() {
   const m = ST.me, T = m.taps + pending + inflight;
   const d = n => Math.floor(T / n) - Math.floor(m.taps / n);
-  const w = m.w + d(10), c = m.c + d(100), t = m.t + d(1000);
-  return { T, w, c, t, power: w + c * 10 + t * 100 };
+  const r = { T, w: m.rw + d(10), c: m.rc + d(100), t: m.rt + d(1000) };
+  r.power = pw(r); return r;
 }
 
 /* ---------- Отрисовка ---------- */
 function renderMap() {
   for (const c of ST.cells) {
     const p = polys[c.id]; if (!p) continue;
-    const col = ownerColor(c.owner);
-    p.setStyle({ fillColor: col, fillOpacity: c.owner == null ? 0.25 : 0.55,
+    p.setStyle({ fillColor: ownerColor(c),
+                 fillOpacity: c.disabled ? 0.65 : c.owner == null ? 0.25 : 0.55,
                  color: sel === c.id ? '#f1c40f' : '#1b2633', weight: sel === c.id ? 4 : 1.5 });
     const el = labels[c.id].getElement();
-    if (el) el.innerHTML = `${c.def}<small>${esc(c.name || '')}</small>`;
+    if (el) el.innerHTML = c.disabled ? '' : `${c.home ? '🏠' : ''}${pw(c)}<small>${esc(c.name || '')}</small>`;
   }
 }
 function renderHUD() {
-  const a = army();
-  $('sW').textContent = a.w; $('sC').textContent = a.c; $('sT').textContent = a.t;
-  $('sP').textContent = a.power;
-  $('sM').textContent = ST.cells.filter(c => c.owner === ST.me.id).length;
+  const r = reserve();
+  $('sW').textContent = r.w; $('sC').textContent = r.c; $('sT').textContent = r.t;
+  $('sP').textContent = r.power; $('sM').textContent = myCells().length;
   for (const [k, n] of [['W', 10], ['C', 100], ['T', 1000]]) {
-    $('b' + k).textContent = (n - a.T % n) + ' тап.';
-    $('f' + k).style.width = (a.T % n) / n * 100 + '%';
+    $('b' + k).textContent = (n - r.T % n) + ' тап.';
+    $('f' + k).style.width = (r.T % n) / n * 100 + '%';
   }
+  const h = $('hint');
+  if (!myCells().length) {
+    h.style.display = 'block';
+    h.textContent = ST.me.home != null && ST.me.taps > 0
+      ? 'Ты потерял все территории. Выбери новую свободную территорию на карте.'
+      : '👆 Выбери на карте свою территорию — нажми на свободную серую соту';
+  } else h.style.display = 'none';
 }
-function canAttack(id) {
-  const mine = ST.cells.filter(c => c.owner === ST.me.id);
-  if (!mine.length) return true;
+function adjacentToMe(id) {
   return GRID.neighbors[id].some(n => cellById[n] && cellById[n].owner === ST.me.id);
 }
 function renderInfo() {
   const box = $('info');
   if (sel == null) {
-    box.innerHTML = '<div class="title">Захват Кудрово</div><div class="sub">Выбери район на карте. Тапай, чтобы собрать армию: 10 тапов — воин, 100 — пушка, 1000 — танк. Первый район можно взять где угодно, дальше — только соседние.</div>';
+    box.innerHTML = '<div class="title">Захват Кудрово</div><div class="sub">Тапай, чтобы собрать армию: 10 тапов — воин, 100 — пушка, 1000 — танк. Отправляй резерв в защиту своей территории или в атаку на соседнюю. Захватил территорию — её защитники переходят к тебе.</div>';
     return;
   }
-  const c = cellById[sel], own = c.owner === ST.me.id, a = army();
-  const ownerTxt = c.owner == null ? 'Свободный' : (own ? 'Твой' : c.ownerName || 'Игрок');
-  box.innerHTML = `<div class="title"><span>${esc(cellName(c))}</span><span class="tag" style="background:${ownerColor(c.owner)}">${esc(ownerTxt)}</span></div>
-    <div class="sub">Оборона: <b>${c.def}</b> · Твоя сила: <b>${a.power}</b></div><div class="btns" id="iBtns"></div>`;
+  const c = cellById[sel], r = reserve(), own = c.owner === ST.me.id, hasLand = myCells().length > 0;
+  const ownerTxt = c.disabled ? 'Не в игре' : c.owner == null ? 'Свободная' : own ? 'Твоя' : (c.ownerName || 'Игрок');
+  let sub;
+  if (c.disabled) sub = 'Эта территория не входит в Кудрово.';
+  else sub = `Защита: <b>${pw(c)}</b> (${army(c)})<br>Твой резерв: <b>${r.power}</b>`;
+  box.innerHTML = `<div class="title"><span>${c.home ? '🏠 ' : ''}${esc(cellName(c))}</span><span class="tag" style="background:${ownerColor(c)}">${esc(ownerTxt)}</span></div>
+    <div class="sub">${sub}</div><div class="btns" id="iBtns"></div>`;
   const btns = $('iBtns');
   const mk = (txt, cls, fn, dis) => { const b = document.createElement('button'); b.textContent = txt; if (cls) b.className = cls; b.disabled = !!dis; b.onclick = fn; btns.appendChild(b); };
-  if (own) {
-    mk('🛡 Укрепить (+' + a.power + ')', 'primary', () => act('/api/fortify', { cell: sel }), a.power === 0);
-  } else {
-    const ok = canAttack(sel);
-    mk(ok ? '⚔️ Атаковать' : 'Нет общей границы', a.power > c.def ? 'primary' : 'danger',
-       () => act('/api/attack', { cell: sel }), !ok || a.power === 0);
+
+  if (!c.disabled) {
+    if (!hasLand) {
+      if (c.owner == null) mk('🏠 Выбрать своей территорией', 'primary', () => askConfirm(
+        'Выбрать «' + cellName(c) + '»?', 'Это будет твоя территория. Сменить её потом будет нельзя.',
+        () => act('/api/choose', { cell: c.id })));
+      else mk('Занята — выбери свободную', '', null, true);
+    } else if (own) {
+      mk('🛡 В защиту (+' + r.power + ')', 'blue', () => act('/api/defend', { cell: c.id }), r.power === 0);
+    } else {
+      const ok = adjacentToMe(c.id);
+      mk(ok ? `⚔️ В атаку (${r.power} против ${pw(c)})` : 'Нет общей границы с тобой',
+         r.power > pw(c) ? 'primary' : 'danger', () => act('/api/attack', { cell: c.id }), !ok || r.power === 0);
+    }
   }
-  if (ST.admin) mk('✏️ Название', '', () => openName(sel));
+  if (ST.admin) {
+    mk('✏️', 'small', () => openName(c.id));
+    mk(c.disabled ? '✅ Вернуть в игру' : '🚫 Не Кудрово', 'small', () => act('/api/toggle', { cell: c.id }));
+  }
 }
 function renderAll() {
   cellById = {}; for (const c of ST.cells) cellById[c.id] = c;
@@ -193,9 +233,9 @@ async function act(path, body) {
 /* ---------- Действия ---------- */
 $('tapBtn').addEventListener('pointerdown', e => {
   if (!ST) return;
-  const before = army();
+  const before = reserve();
   pending++;
-  const a = army();
+  const a = reserve();
   floatText('+1', e.clientX, e.clientY);
   if (a.w > before.w) floatText('🪖 +воин', e.clientX, e.clientY - 20);
   if (a.c > before.c) { toast('💥 Новая пушка! (+10 силы)'); haptic('medium'); }
@@ -231,8 +271,13 @@ $('tClose').onclick = () => $('topModal').style.display = 'none';
   L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png',
               { maxZoom: 18, attribution: '© OpenStreetMap' }).addTo(map);
   for (const c of GRID.cells) {
-    const p = L.polygon(c.poly, { fillColor: NEUTRAL, fillOpacity: 0.25, color: '#1b2633', weight: 1.5 }).addTo(map);
-    p.on('click', () => { if (!ST) return; sel = c.id; haptic(); renderAll(); });
+    const p = L.polygon(c.poly, { fillColor: FREE, fillOpacity: 0.25, color: '#1b2633', weight: 1.5 }).addTo(map);
+    p.on('click', () => {
+      if (!ST) return;
+      const cell = cellById[c.id];
+      if (cell && cell.disabled && !ST.admin) { toast('Это не Кудрово — территория не в игре'); return; }
+      sel = c.id; haptic(); renderAll();
+    });
     polys[c.id] = p;
     labels[c.id] = L.marker(c.center, { interactive: false,
       icon: L.divIcon({ className: 'cl', html: '', iconSize: [70, 28], iconAnchor: [35, 14] }) }).addTo(map);

@@ -2,9 +2,17 @@
 
 Переменные окружения:
   BOT_TOKEN     — токен бота от @BotFather
-  BASE_URL      — адрес сервиса, например https://kudrovo-game.onrender.com
+  BASE_URL      — адрес сервиса, например https://kudrovogame.onrender.com
   DATABASE_URL  — строка подключения к Postgres (Supabase, Session pooler)
   ADMIN_IDS     — твой Telegram ID (узнать: написать боту /myid), можно несколько через запятую
+
+Правила:
+  * Каждый игрок один раз выбирает свободную территорию — это его дом, сменить нельзя.
+  * Тапы дают армию в резерв: 10 тапов — воин, 100 — пушка, 1000 — танк.
+  * Резерв можно отправить в защиту своей территории или в атаку на соседнюю.
+  * Если атака сильнее защиты, территория переходит к атакующему,
+    а её защитники переходят на сторону победителя.
+  * Админ задаёт названия территорий и отключает те, что не входят в Кудрово.
 """
 import hashlib
 import hmac
@@ -13,7 +21,7 @@ import math
 import os
 import random
 import time
-from urllib.parse import parse_qsl
+from urllib.parse import parse_qsl, urlsplit
 
 import asyncpg
 from aiogram import Bot, Dispatcher
@@ -30,7 +38,7 @@ from aiohttp import web
 
 BOT_TOKEN = os.environ["BOT_TOKEN"]
 BASE_URL = os.environ["BASE_URL"].rstrip("/")
-DATABASE_URL = os.environ["DATABASE_URL"]
+DATABASE_URL = os.environ["DATABASE_URL"].strip()
 ADMIN_IDS = {int(x) for x in os.getenv("ADMIN_IDS", "").replace(" ", "").split(",") if x}
 PORT = int(os.getenv("PORT", "8080"))
 
@@ -39,9 +47,9 @@ WEBHOOK_SECRET = hashlib.sha256(("secret:" + BOT_TOKEN).encode()).hexdigest()[:3
 HERE = os.path.dirname(os.path.abspath(__file__))
 
 # ---------------------------------------------------------------- Карта
-# Прямоугольник, который покрывает Кудрово. Подвинь, если нужно.
+# Прямоугольник, который покрывает Кудрово. Лишние соты админ отключает в игре.
 BOUNDS = {"south": 59.893, "north": 59.918, "west": 30.488, "east": 30.548}
-HEX_RADIUS_M = 230          # размер одного района (радиус соты в метрах)
+HEX_RADIUS_M = 230          # размер одной территории (радиус соты в метрах)
 MAX_TAPS_PER_SEC = 15       # защита от автокликеров
 
 
@@ -87,22 +95,31 @@ N_CELLS = len(GRID["cells"])
 NEIGHBORS = GRID["neighbors"]
 GRID_JSON = json.dumps(GRID, separators=(",", ":"))
 
+
+def power(w, c, t):
+    return w + c * 10 + t * 100
+
+
 # ---------------------------------------------------------------- База данных
 SCHEMA = """
-create table if not exists players (
+create table if not exists players2 (
     id bigint primary key,
     name text not null,
+    home int,
     taps bigint not null default 0,
-    w bigint not null default 0,
-    c bigint not null default 0,
-    t bigint not null default 0,
+    rw bigint not null default 0,
+    rc bigint not null default 0,
+    rt bigint not null default 0,
     last_tap double precision not null default 0
 );
-create table if not exists cells (
+create table if not exists cells2 (
     id int primary key,
     name text,
-    owner bigint references players(id),
-    def bigint not null
+    owner bigint references players2(id),
+    disabled boolean not null default false,
+    gw bigint not null default 0,
+    gc bigint not null default 0,
+    gt bigint not null default 0
 );
 """
 
@@ -110,11 +127,18 @@ create table if not exists cells (
 async def init_db(pool):
     async with pool.acquire() as con:
         await con.execute(SCHEMA)
-        existing = {r["id"] for r in await con.fetch("select id from cells")}
-        new = [(i, random.randint(5, 30)) for i in range(N_CELLS) if i not in existing]
+        existing = {r["id"] for r in await con.fetch("select id from cells2")}
+        old_names = {}
+        try:  # названия из первой версии игры, если ты уже успел их задать
+            old_names = {r["id"]: r["name"] for r in await con.fetch(
+                "select id, name from cells where name is not null")}
+        except Exception:
+            pass
+        new = [(i, old_names.get(i), random.randint(5, 30))
+               for i in range(N_CELLS) if i not in existing]
         if new:
-            await con.executemany("insert into cells(id, def) values($1, $2)", new)
-        await con.execute("delete from cells where id >= $1", N_CELLS)
+            await con.executemany("insert into cells2(id, name, gw) values($1, $2, $3)", new)
+        await con.execute("delete from cells2 where id >= $1", N_CELLS)
 
 
 # ---------------------------------------------------------------- Проверка игрока
@@ -157,7 +181,7 @@ async def player_from_request(request):
     uid = int(user["id"])
     async with request.app["pool"].acquire() as con:
         await con.execute(
-            "insert into players(id, name) values($1, $2) "
+            "insert into players2(id, name) values($1, $2) "
             "on conflict (id) do update set name = excluded.name",
             uid, display_name(user))
     return uid, body
@@ -167,21 +191,38 @@ def err(msg, status=400):
     return web.json_response({"error": msg}, status=status)
 
 
+def cell_id(body):
+    try:
+        cid = int(body["cell"])
+    except Exception:
+        return None
+    return cid if 0 <= cid < N_CELLS else None
+
+
 async def build_state(con, uid):
-    me = await con.fetchrow("select id, name, taps, w, c, t from players where id=$1", uid)
+    me = await con.fetchrow("select id, name, home, taps, rw, rc, rt from players2 where id=$1", uid)
     cells = await con.fetch(
-        "select c.id, c.name, c.owner, c.def, p.name as oname "
-        "from cells c left join players p on p.id = c.owner order by c.id")
+        "select c.id, c.name, c.owner, c.disabled, c.gw, c.gc, c.gt, p.name as oname, p.home as ohome "
+        "from cells2 c left join players2 p on p.id = c.owner order by c.id")
     top = await con.fetch(
-        "select p.name, count(*) as n from cells c join players p on p.id = c.owner "
+        "select p.name, count(*) as n from cells2 c join players2 p on p.id = c.owner "
         "group by p.id, p.name order by n desc limit 10")
     return {
         "me": dict(me),
         "admin": uid in ADMIN_IDS,
-        "cells": [{"id": r["id"], "name": r["name"], "owner": r["owner"],
-                   "ownerName": r["oname"], "def": r["def"]} for r in cells],
+        "cells": [{"id": r["id"], "name": r["name"], "owner": r["owner"], "ownerName": r["oname"],
+                   "home": r["owner"] is not None and r["ohome"] == r["id"],
+                   "disabled": r["disabled"], "w": r["gw"], "c": r["gc"], "t": r["gt"]}
+                  for r in cells],
         "top": [{"name": r["name"], "n": r["n"]} for r in top],
     }
+
+
+async def notify(app, user_id, text):
+    try:
+        await app["bot"].send_message(user_id, text)
+    except Exception:
+        pass  # игрок мог не запускать бота или заблокировать его
 
 
 # ---------------------------------------------------------------- API
@@ -192,7 +233,7 @@ async def index(request):
 
 async def grid(request):
     return web.Response(text=GRID_JSON, content_type="application/json",
-                        headers={"Cache-Control": "public, max-age=300"})
+                        headers={"Cache-Control": "no-cache"})
 
 
 async def health(request):
@@ -213,87 +254,148 @@ async def api_tap(request):
         return err("Плохой запрос")
     async with request.app["pool"].acquire() as con:
         async with con.transaction():
-            p = await con.fetchrow("select * from players where id=$1 for update", uid)
+            p = await con.fetchrow("select * from players2 where id=$1 for update", uid)
             now = time.time()
             elapsed = now - p["last_tap"] if p["last_tap"] else 2
             allowed = int(min(n, elapsed * MAX_TAPS_PER_SEC + 5, 200))
             old, new = p["taps"], p["taps"] + allowed
             row = await con.fetchrow(
-                "update players set taps=$2, w=w+$3, c=c+$4, t=t+$5, last_tap=$6 "
-                "where id=$1 returning id, name, taps, w, c, t",
+                "update players2 set taps=$2, rw=rw+$3, rc=rc+$4, rt=rt+$5, last_tap=$6 "
+                "where id=$1 returning id, name, home, taps, rw, rc, rt",
                 uid, new, new // 10 - old // 10, new // 100 - old // 100,
                 new // 1000 - old // 1000, now)
     return web.json_response({"me": dict(row), "accepted": allowed})
 
 
+async def api_choose(request):
+    """Выбор своей территории — один раз (снова только если потерял всё)."""
+    uid, body = await player_from_request(request)
+    cid = cell_id(body)
+    if cid is None:
+        return err("Нет такой территории")
+    async with request.app["pool"].acquire() as con:
+        async with con.transaction():
+            await con.fetchrow("select id from players2 where id=$1 for update", uid)
+            if await con.fetchval("select count(*) from cells2 where owner=$1", uid):
+                return err("Ты уже выбрал территорию — сменить её нельзя")
+            cell = await con.fetchrow("select * from cells2 where id=$1 for update", cid)
+            if cell["disabled"]:
+                return err("Эта территория не входит в игру")
+            if cell["owner"] is not None:
+                return err("Эта территория уже занята — выбери свободную")
+            await con.execute("update cells2 set owner=$2 where id=$1", cid, uid)
+            await con.execute("update players2 set home=$2 where id=$1", uid, cid)
+        return web.json_response({"msg": "Это теперь твоя территория!", "state": await build_state(con, uid)})
+
+
+async def api_defend(request):
+    """Весь резерв уходит в защиту выбранной своей территории."""
+    uid, body = await player_from_request(request)
+    cid = cell_id(body)
+    if cid is None:
+        return err("Нет такой территории")
+    async with request.app["pool"].acquire() as con:
+        async with con.transaction():
+            p = await con.fetchrow("select * from players2 where id=$1 for update", uid)
+            cell = await con.fetchrow("select * from cells2 where id=$1 for update", cid)
+            if cell["owner"] != uid:
+                return err("Это не твоя территория")
+            if power(p["rw"], p["rc"], p["rt"]) <= 0:
+                return err("Резерв пуст — потапай!")
+            await con.execute("update cells2 set gw=gw+$2, gc=gc+$3, gt=gt+$4 where id=$1",
+                              cid, p["rw"], p["rc"], p["rt"])
+            await con.execute("update players2 set rw=0, rc=0, rt=0 where id=$1", uid)
+        return web.json_response({"msg": "Армия ушла в защиту", "state": await build_state(con, uid)})
+
+
 async def api_attack(request):
+    """Весь резерв идёт в атаку на выбранную территорию."""
     uid, body = await player_from_request(request)
-    try:
-        cid = int(body["cell"])
-        assert 0 <= cid < N_CELLS
-    except Exception:
-        return err("Нет такого района")
+    cid = cell_id(body)
+    if cid is None:
+        return err("Нет такой территории")
+    victim = None
     async with request.app["pool"].acquire() as con:
         async with con.transaction():
-            p = await con.fetchrow("select * from players where id=$1 for update", uid)
-            cell = await con.fetchrow("select * from cells where id=$1 for update", cid)
+            p = await con.fetchrow("select * from players2 where id=$1 for update", uid)
+            cell = await con.fetchrow("select * from cells2 where id=$1 for update", cid)
+            if cell["disabled"]:
+                return err("Эта территория не входит в игру")
             if cell["owner"] == uid:
-                return err("Это уже твой район")
-            owned = {r["id"] for r in await con.fetch("select id from cells where owner=$1", uid)}
-            if owned and not any(n in owned for n in NEIGHBORS[cid]):
-                return err("Можно нападать только на соседние районы")
-            power = p["w"] + p["c"] * 10 + p["t"] * 100
-            if power <= 0:
-                return err("Нет армии — потапай!")
-            if power > cell["def"]:
-                keep = 1 - cell["def"] / power
+                return err("Это твоя территория")
+            owned = {r["id"] for r in await con.fetch("select id from cells2 where owner=$1", uid)}
+            if not owned:
+                return err("Сначала выбери свою территорию")
+            if not any(n in owned for n in NEIGHBORS[cid]):
+                return err("Нападать можно только на соседние территории")
+            A = power(p["rw"], p["rc"], p["rt"])
+            D = power(cell["gw"], cell["gc"], cell["gt"])
+            if A <= 0:
+                return err("Резерв пуст — потапай!")
+            name = cell["name"] or f"Территория {cid + 1}"
+            if A > D:
+                keep = 1 - D / A
+                sw, sc, st = (math.floor(p["rw"] * keep), math.floor(p["rc"] * keep),
+                              math.floor(p["rt"] * keep))
+                # защитники переходят на сторону победителя
                 await con.execute(
-                    "update players set w=$2, c=$3, t=$4 where id=$1", uid,
-                    math.floor(p["w"] * keep), math.floor(p["c"] * keep), math.floor(p["t"] * keep))
-                await con.execute("update cells set owner=$2, def=5 where id=$1", cid, uid)
-                msg = "Район захвачен!"
+                    "update cells2 set owner=$2, gw=gw+$3, gc=gc+$4, gt=gt+$5 where id=$1",
+                    cid, uid, sw, sc, st)
+                await con.execute("update players2 set rw=0, rc=0, rt=0 where id=$1", uid)
+                joined = power(cell["gw"], cell["gc"], cell["gt"])
+                msg = f"{name} захвачена! К тебе перешли защитники (сила {joined})"
+                if cell["owner"] is not None:
+                    victim = (cell["owner"], f"⚠️ {p['name']} захватил твою территорию «{name}»! "
+                                             f"Открой игру и отбей её.")
             else:
-                new_def = max(1, cell["def"] - power // 2)
-                await con.execute("update players set w=0, c=0, t=0 where id=$1", uid)
-                await con.execute("update cells set def=$2 where id=$1", cid, new_def)
-                msg = f"Атака отбита. Оборона ослабла до {new_def}"
-        return web.json_response({"msg": msg, "state": await build_state(con, uid)})
-
-
-async def api_fortify(request):
-    uid, body = await player_from_request(request)
-    try:
-        cid = int(body["cell"])
-    except Exception:
-        return err("Нет такого района")
-    async with request.app["pool"].acquire() as con:
-        async with con.transaction():
-            p = await con.fetchrow("select * from players where id=$1 for update", uid)
-            cell = await con.fetchrow("select * from cells where id=$1 for update", cid)
-            if not cell or cell["owner"] != uid:
-                return err("Это не твой район")
-            power = p["w"] + p["c"] * 10 + p["t"] * 100
-            if power <= 0:
-                return err("Нет армии — потапай!")
-            await con.execute("update cells set def=def+$2 where id=$1", cid, power)
-            await con.execute("update players set w=0, c=0, t=0 where id=$1", uid)
-        return web.json_response({"msg": "Район укреплён", "state": await build_state(con, uid)})
+                keep_d = max(0.0, 1 - (A / 2) / D)
+                await con.execute(
+                    "update cells2 set gw=$2, gc=$3, gt=$4 where id=$1", cid,
+                    math.floor(cell["gw"] * keep_d), math.floor(cell["gc"] * keep_d),
+                    math.floor(cell["gt"] * keep_d))
+                await con.execute("update players2 set rw=0, rc=0, rt=0 where id=$1", uid)
+                msg = f"Атака отбита. Защита «{name}» ослабла"
+                if cell["owner"] is not None:
+                    victim = (cell["owner"], f"🛡 {p['name']} напал на «{name}», но защита выстояла.")
+        state = await build_state(con, uid)
+    if victim:
+        await notify(request.app, *victim)
+    return web.json_response({"msg": msg, "state": state})
 
 
 async def api_name(request):
-    """Название района может менять только админ."""
+    """Название территории может менять только админ."""
     uid, body = await player_from_request(request)
     if uid not in ADMIN_IDS:
-        return err("Названия районов задаёт только админ", 403)
-    try:
-        cid = int(body["cell"])
-        assert 0 <= cid < N_CELLS
-    except Exception:
-        return err("Нет такого района")
+        return err("Названия задаёт только админ", 403)
+    cid = cell_id(body)
+    if cid is None:
+        return err("Нет такой территории")
     name = str(body.get("name", "")).strip()[:30] or None
     async with request.app["pool"].acquire() as con:
-        await con.execute("update cells set name=$2 where id=$1", cid, name)
+        await con.execute("update cells2 set name=$2 where id=$1", cid, name)
         return web.json_response({"msg": "Название сохранено", "state": await build_state(con, uid)})
+
+
+async def api_toggle(request):
+    """Админ включает/отключает территорию (то, что не Кудрово)."""
+    uid, body = await player_from_request(request)
+    if uid not in ADMIN_IDS:
+        return err("Только для админа", 403)
+    cid = cell_id(body)
+    if cid is None:
+        return err("Нет такой территории")
+    async with request.app["pool"].acquire() as con:
+        async with con.transaction():
+            cell = await con.fetchrow("select * from cells2 where id=$1 for update", cid)
+            if cell["disabled"]:
+                await con.execute("update cells2 set disabled=false where id=$1", cid)
+                msg = "Территория снова в игре"
+            else:
+                await con.execute("update players2 set home=null where home=$1", cid)
+                await con.execute("update cells2 set disabled=true, owner=null where id=$1", cid)
+                msg = "Территория убрана из игры"
+        return web.json_response({"msg": msg, "state": await build_state(con, uid)})
 
 
 # ---------------------------------------------------------------- Бот
@@ -309,8 +411,8 @@ def play_keyboard():
 @dp.message(CommandStart())
 async def cmd_start(message: Message):
     await message.answer(
-        "Захват Кудрово! Тапай, собирай армию — воинов, пушки и танки — "
-        "и захватывай районы города. Карта общая для всех игроков.",
+        "Захват Кудрово! Выбери свою территорию, тапай, собирай армию — воинов, пушки и танки — "
+        "и захватывай соседей. Карта общая для всех игроков.",
         reply_markup=play_keyboard())
 
 
@@ -321,9 +423,8 @@ async def cmd_myid(message: Message):
 
 # ---------------------------------------------------------------- Запуск
 def check_database_url():
-    from urllib.parse import urlsplit
     try:
-        u = urlsplit(DATABASE_URL.strip())
+        u = urlsplit(DATABASE_URL)
         host, user, port = u.hostname or "", u.username or "", u.port
     except Exception:
         host = user = ""
@@ -339,7 +440,7 @@ def check_database_url():
 
 async def on_startup(app):
     check_database_url()
-    app["pool"] = await asyncpg.create_pool(DATABASE_URL.strip(), min_size=1, max_size=5,
+    app["pool"] = await asyncpg.create_pool(DATABASE_URL, min_size=1, max_size=5,
                                             statement_cache_size=0)
     await init_db(app["pool"])
     bot = app["bot"]
@@ -350,7 +451,8 @@ async def on_startup(app):
 
 
 async def on_cleanup(app):
-    await app["pool"].close()
+    if "pool" in app:
+        await app["pool"].close()
     await app["bot"].session.close()
 
 
@@ -362,9 +464,11 @@ def make_app():
     app.router.add_get("/api/grid", grid)
     app.router.add_post("/api/state", api_state)
     app.router.add_post("/api/tap", api_tap)
+    app.router.add_post("/api/choose", api_choose)
+    app.router.add_post("/api/defend", api_defend)
     app.router.add_post("/api/attack", api_attack)
-    app.router.add_post("/api/fortify", api_fortify)
     app.router.add_post("/api/name", api_name)
+    app.router.add_post("/api/toggle", api_toggle)
     SimpleRequestHandler(dispatcher=dp, bot=app["bot"], secret_token=WEBHOOK_SECRET).register(
         app, path=WEBHOOK_PATH)
     app.on_startup.append(on_startup)
