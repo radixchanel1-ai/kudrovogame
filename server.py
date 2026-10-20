@@ -254,6 +254,7 @@ async def trim_to_kudrovo(pool):
                 await dissolve_if_empty(con, fid)
             await con.execute("insert into meta(key, value) values('trimmed', '1') "
                               "on conflict (key) do update set value='1'")
+    invalidate_world()
     return N_CELLS - len(out), len(out)
 
 
@@ -300,6 +301,9 @@ def display_name(user: dict) -> str:
     return name[:40] or "Игрок"
 
 
+KNOWN_PLAYERS = {}   # кого уже записали в базу (id -> имя)
+
+
 async def player_from_request(request):
     try:
         body = await request.json()
@@ -310,11 +314,14 @@ async def player_from_request(request):
     except (AuthError, KeyError, ValueError) as e:
         raise web.HTTPUnauthorized(text=json.dumps({"error": str(e) or "Нет доступа"}), content_type="application/json")
     uid = int(user["id"])
-    async with request.app["pool"].acquire() as con:
-        await con.execute(
-            "insert into players3(id, name) values($1, $2) "
-            "on conflict (id) do update set name = excluded.name",
-            uid, display_name(user))
+    name = display_name(user)
+    if KNOWN_PLAYERS.get(uid) != name:
+        async with request.app["pool"].acquire() as con:
+            await con.execute(
+                "insert into players3(id, name) values($1, $2) "
+                "on conflict (id) do update set name = excluded.name",
+                uid, name)
+        KNOWN_PLAYERS[uid] = name
     return uid, body
 
 
@@ -334,45 +341,88 @@ def fname(fid, names):
     return names.get(fid) or "Территория без названия"
 
 
+# ---------------------------------------------------------------- Общее состояние мира
+# Карта и рейтинг одинаковы для всех игроков, поэтому сервер собирает их не чаще
+# раза в WORLD_TTL секунд и отдаёт всем один и тот же готовый JSON.
+# После любого действия (атака, защита, выбор, название...) кэш сразу обновляется.
+WORLD_TTL = 1.0
+WORLD = {"t": 0.0}
+WORLD_LOCK = asyncio.Lock()
+COLORS_JSON = json.dumps(TEAM_COLORS)
+
+
+def invalidate_world():
+    WORLD["t"] = 0.0
+
+
+async def get_world(con):
+    if time.monotonic() - WORLD["t"] < WORLD_TTL:
+        return WORLD
+    async with WORLD_LOCK:
+        if time.monotonic() - WORLD["t"] < WORLD_TTL:
+            return WORLD
+        started = time.monotonic()
+        cells = await con.fetch("select id, name, owner, disabled, gw, gc, gt from cells3 order by id")
+        names = {r["id"]: r["name"] for r in cells}
+        facs = {r["id"]: dict(r) for r in await con.fetch(
+            "select f.*, (select count(*) from players3 p where p.faction=f.id) as members, "
+            "(select count(*) from cells3 c where c.owner=f.id) as cells from factions f")}
+        # Очки: 100 за каждую соту + сила армии (защита всех сот + резерв) + 1 за каждые 10 тапов
+        garrison = {}
+        for r in cells:
+            if r["owner"] is not None:
+                garrison[r["owner"]] = garrison.get(r["owner"], 0) + power(r["gw"], r["gc"], r["gt"])
+        for f in facs.values():
+            f["power"] = garrison.get(f["id"], 0) + power(f["rw"], f["rc"], f["rt"])
+            f["points"] = f["cells"] * POINTS_PER_CELL + f["power"] + f["taps"] // 10
+        ranking = sorted(facs.values(), key=lambda f: (-f["points"], -f["cells"], -f["members"], f["id"]))
+        WORLD.update({
+            "names": names,
+            "facs": facs,
+            "rank": {f["id"]: i + 1 for i, f in enumerate(ranking)},
+            "cells_json": json.dumps([
+                {"id": r["id"], "name": r["name"], "owner": r["owner"],
+                 "ownerName": fname(r["owner"], names) if r["owner"] is not None else None,
+                 "members": facs[r["owner"]]["members"] if r["owner"] in facs else 0,
+                 "color": facs[r["owner"]]["color"] if r["owner"] in facs else None,
+                 "home": r["owner"] == r["id"],
+                 "disabled": r["disabled"], "w": r["gw"], "c": r["gc"], "t": r["gt"]}
+                for r in cells], ensure_ascii=False, separators=(",", ":")),
+            "top_json": json.dumps([
+                {"id": f["id"], "name": fname(f["id"], names), "n": f["cells"], "members": f["members"],
+                 "color": f["color"], "points": f["points"], "power": f["power"]}
+                for f in ranking], ensure_ascii=False, separators=(",", ":")),
+            "t": time.monotonic(),
+        })
+        took = time.monotonic() - started
+        if took > 0.5:
+            print(f"[НАГРУЗКА] сбор карты занял {took:.2f} с", flush=True)
+        return WORLD
+
+
 async def build_state(con, uid):
-    me = await con.fetchrow("select id, name, faction, taps from players3 where id=$1", uid)
-    cells = await con.fetch("select id, name, owner, disabled, gw, gc, gt from cells3 order by id")
-    names = {r["id"]: r["name"] for r in cells}
-    facs = {r["id"]: dict(r) for r in await con.fetch(
-        "select f.*, (select count(*) from players3 p where p.faction=f.id) as members, "
-        "(select count(*) from cells3 c where c.owner=f.id) as cells from factions f")}
+    """Готовый JSON состояния для игрока: общий мир из кэша + его личные данные."""
+    w = await get_world(con)
+    r = await con.fetchrow(
+        "select p.id, p.name, p.faction, p.taps as ptaps, f.taps, f.rw, f.rc, f.rt, f.color, f.leader "
+        "from players3 p left join factions f on f.id = p.faction where p.id=$1", uid)
+    me = {"id": r["id"], "name": r["name"], "faction": r["faction"], "taps": r["ptaps"]}
     team = None
-    if me["faction"] is not None and me["faction"] in facs:
-        f = facs[me["faction"]]
-        team = {"id": f["id"], "name": fname(f["id"], names), "taps": f["taps"],
-                "rw": f["rw"], "rc": f["rc"], "rt": f["rt"], "members": f["members"],
-                "color": f["color"], "leader": f["leader"] == uid}
-    # Очки: 100 за каждую соту + сила армии (защита всех сот + резерв) + 1 за каждые 10 тапов
-    garrison = {}
-    for r in cells:
-        if r["owner"] is not None:
-            garrison[r["owner"]] = garrison.get(r["owner"], 0) + power(r["gw"], r["gc"], r["gt"])
-    for f in facs.values():
-        f["power"] = garrison.get(f["id"], 0) + power(f["rw"], f["rc"], f["rt"])
-        f["points"] = f["cells"] * POINTS_PER_CELL + f["power"] + f["taps"] // 10
-    ranking = sorted(facs.values(), key=lambda f: (-f["points"], -f["cells"], -f["members"], f["id"]))
-    my_rank = next((i + 1 for i, f in enumerate(ranking) if f["id"] == me["faction"]), None)
-    return {
-        "me": dict(me),
-        "team": team,
-        "admin": uid in ADMIN_IDS,
-        "cells": [{"id": r["id"], "name": r["name"], "owner": r["owner"],
-                   "ownerName": fname(r["owner"], names) if r["owner"] is not None else None,
-                   "members": facs[r["owner"]]["members"] if r["owner"] in facs else 0,
-                   "color": facs[r["owner"]]["color"] if r["owner"] in facs else None,
-                   "home": r["owner"] == r["id"],
-                   "disabled": r["disabled"], "w": r["gw"], "c": r["gc"], "t": r["gt"]}
-                  for r in cells],
-        "top": [{"id": f["id"], "name": fname(f["id"], names), "n": f["cells"], "members": f["members"],
-                 "color": f["color"], "points": f["points"], "power": f["power"]} for f in ranking],
-        "rank": my_rank,
-        "colors": TEAM_COLORS,
-    }
+    if r["faction"] is not None and r["taps"] is not None:
+        fid = r["faction"]
+        team = {"id": fid, "name": fname(fid, w["names"]), "taps": r["taps"],
+                "rw": r["rw"], "rc": r["rc"], "rt": r["rt"],
+                "members": w["facs"].get(fid, {}).get("members", 1),
+                "color": r["color"], "leader": r["leader"] == uid}
+    personal = json.dumps({"me": me, "team": team, "admin": uid in ADMIN_IDS,
+                           "rank": w["rank"].get(r["faction"])}, ensure_ascii=False)
+    return (personal[:-1] + ',"cells":' + w["cells_json"] + ',"top":' + w["top_json"]
+            + ',"colors":' + COLORS_JSON + '}')
+
+
+def state_response(state, msg=None):
+    body = state if msg is None else '{"msg":' + json.dumps(msg, ensure_ascii=False) + ',"state":' + state + '}'
+    return web.Response(text=body, content_type="application/json")
 
 
 async def notify(app, user_id, text):
@@ -406,7 +456,7 @@ async def health(request):
 async def api_state(request):
     uid, _ = await player_from_request(request)
     async with request.app["pool"].acquire() as con:
-        return web.json_response(await build_state(con, uid))
+        return state_response(await build_state(con, uid))
 
 
 async def api_tap(request):
@@ -459,7 +509,8 @@ async def api_choose(request):
                 fid = cell["owner"]
                 msg = "Ты вступил в команду! Ваши тапы теперь общие."
             await con.execute("update players3 set faction=$2 where id=$1", uid, fid)
-        return web.json_response({"msg": msg, "state": await build_state(con, uid)})
+        invalidate_world()
+        return state_response(await build_state(con, uid), msg)
 
 
 async def api_defend(request):
@@ -482,7 +533,8 @@ async def api_defend(request):
             await con.execute("update cells3 set gw=gw+$2, gc=gc+$3, gt=gt+$4 where id=$1",
                               cid, f["rw"], f["rc"], f["rt"])
             await con.execute("update factions set rw=0, rc=0, rt=0 where id=$1", f["id"])
-        return web.json_response({"msg": "Армия ушла в защиту", "state": await build_state(con, uid)})
+        invalidate_world()
+        return state_response(await build_state(con, uid), "Армия ушла в защиту")
 
 
 async def api_attack(request):
@@ -546,10 +598,11 @@ async def api_attack(request):
             others = [r["id"] for r in await con.fetch(
                 "select id from players3 where faction=$1 and id<>$2", fid, uid)]
             alerts.append((others, f"⚔️ {p['name']} отправил армию вашей команды на «{name}»: {msg}"))
+        invalidate_world()
         state = await build_state(con, uid)
     for ids, text in alerts:
         asyncio.create_task(notify_many(request.app, ids, text))
-    return web.json_response({"msg": msg, "state": state})
+    return state_response(state, msg)
 
 
 async def api_color(request):
@@ -566,7 +619,8 @@ async def api_color(request):
         if leader != uid:
             return err("Цвет меняет только лидер команды")
         await con.execute("update factions set color=$2 where id=$1", p["faction"], color)
-        return web.json_response({"msg": "Цвет команды изменён", "state": await build_state(con, uid)})
+        invalidate_world()
+        return state_response(await build_state(con, uid), "Цвет команды изменён")
 
 
 async def api_name(request):
@@ -580,7 +634,8 @@ async def api_name(request):
     name = str(body.get("name", "")).strip()[:30] or None
     async with request.app["pool"].acquire() as con:
         await con.execute("update cells3 set name=$2 where id=$1", cid, name)
-        return web.json_response({"msg": "Название сохранено", "state": await build_state(con, uid)})
+        invalidate_world()
+        return state_response(await build_state(con, uid), "Название сохранено")
 
 
 async def api_toggle(request):
@@ -601,7 +656,8 @@ async def api_toggle(request):
                 await con.execute("update cells3 set disabled=true, owner=null where id=$1", cid)
                 await dissolve_if_empty(con, cell["owner"])
                 msg = "Территория убрана из игры"
-        return web.json_response({"msg": msg, "state": await build_state(con, uid)})
+        invalidate_world()
+        return state_response(await build_state(con, uid), msg)
 
 
 # ---------------------------------------------------------------- Бот
@@ -661,7 +717,7 @@ def check_database_url():
 
 async def on_startup(app):
     check_database_url()
-    app["pool"] = await asyncpg.create_pool(DATABASE_URL, min_size=1, max_size=5,
+    app["pool"] = await asyncpg.create_pool(DATABASE_URL, min_size=1, max_size=8,
                                             statement_cache_size=0)
     await init_db(app["pool"])
     APP["pool"] = app["pool"]

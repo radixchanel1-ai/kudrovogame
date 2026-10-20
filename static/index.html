@@ -371,8 +371,11 @@ $('tClose').onclick = () => $('topModal').style.display = 'none';
   map.on('zoom zoomend viewreset', scaleLabels); scaleLabels();
   if (!initData) { $('info').innerHTML = '<div class="sub">Открой игру через бота в Telegram.</div>'; return; }
   await refresh();
-  setInterval(flush, 1000);
-  setInterval(() => { if (!inflight) refresh(); }, 4000);
+  // тапы отправляются пачкой раз в 2 секунды, карта обновляется раз в 5 секунд,
+  // а когда игра свёрнута — не обновляется вообще (экономим сервер)
+  setInterval(flush, 2000);
+  setInterval(() => { if (!inflight && !document.hidden) refresh(); }, 5000);
+  document.addEventListener('visibilitychange', () => { if (!document.hidden) refresh(); else flush(); });
 })();
 </script>
 </body>
