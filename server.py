@@ -320,8 +320,26 @@ async def cmd_myid(message: Message):
 
 
 # ---------------------------------------------------------------- Запуск
+def check_database_url():
+    from urllib.parse import urlsplit
+    try:
+        u = urlsplit(DATABASE_URL.strip())
+        host, user, port = u.hostname or "", u.username or "", u.port
+    except Exception:
+        host = user = ""
+        port = None
+    print(f"[БАЗА] подключаюсь: пользователь={user!r} адрес={host!r} порт={port}", flush=True)
+    if "[" in DATABASE_URL or "YOUR-PASSWORD" in DATABASE_URL:
+        raise SystemExit("[БАЗА] ОШИБКА: в DATABASE_URL остался [YOUR-PASSWORD] или квадратные скобки — "
+                         "впиши свой пароль без скобок.")
+    if host.startswith("db.") and host.endswith(".supabase.co"):
+        raise SystemExit("[БАЗА] ОШИБКА: это строка Direct connection, Render к ней не подключится. "
+                         "Возьми в Supabase: Connect -> Session pooler (адрес ...pooler.supabase.com).")
+
+
 async def on_startup(app):
-    app["pool"] = await asyncpg.create_pool(DATABASE_URL, min_size=1, max_size=5,
+    check_database_url()
+    app["pool"] = await asyncpg.create_pool(DATABASE_URL.strip(), min_size=1, max_size=5,
                                             statement_cache_size=0)
     await init_db(app["pool"])
     bot = app["bot"]
