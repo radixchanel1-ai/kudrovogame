@@ -103,6 +103,12 @@ def power(w, c, t):
     return w + c * 10 + t * 100
 
 
+# Цвета команд. Лидер может выбрать любой из них.
+TEAM_COLORS = ["#e74c3c", "#3498db", "#2ecc71", "#9b59b6", "#f39c12", "#1abc9c",
+               "#e84393", "#f1c40f", "#00cec9", "#6c5ce7", "#d35400", "#fd79a8",
+               "#27ae60", "#0984e3", "#b33939", "#ffffff"]
+
+
 # ---------------------------------------------------------------- База данных
 # Команда (territory/faction) = все игроки, выбравшие одну территорию.
 # id команды = номер соты, на которой её основали.
@@ -150,6 +156,19 @@ async def init_db(pool):
             await con.executemany(
                 "insert into cells3(id, name, disabled, gw) values($1, $2, $3, $4)", new)
         await con.execute("delete from cells3 where id >= $1", N_CELLS)
+        # лидер и цвет команды
+        await con.execute("alter table factions add column if not exists leader bigint")
+        await con.execute("alter table factions add column if not exists color text")
+        await con.execute("update factions f set leader=(select min(id) from players3 p where p.faction=f.id) "
+                          "where leader is null")
+        for r in await con.fetch("select id from factions where color is null order by id"):
+            await con.execute("update factions set color=$2 where id=$1", r["id"], await free_color(con))
+
+
+async def free_color(con):
+    """Цвет, который сейчас реже всего используется командами."""
+    used = [r["color"] for r in await con.fetch("select color from factions where color is not null")]
+    return min(TEAM_COLORS[:-1], key=lambda c: (used.count(c), random.random()))
 
 
 async def dissolve_if_empty(con, fid):
@@ -324,7 +343,8 @@ async def build_state(con, uid):
     if me["faction"] is not None and me["faction"] in facs:
         f = facs[me["faction"]]
         team = {"id": f["id"], "name": fname(f["id"], names), "taps": f["taps"],
-                "rw": f["rw"], "rc": f["rc"], "rt": f["rt"], "members": f["members"]}
+                "rw": f["rw"], "rc": f["rc"], "rt": f["rt"], "members": f["members"],
+                "color": f["color"], "leader": f["leader"] == uid}
     top = sorted(facs.values(), key=lambda f: (-f["cells"], -f["members"]))[:10]
     return {
         "me": dict(me),
@@ -333,10 +353,13 @@ async def build_state(con, uid):
         "cells": [{"id": r["id"], "name": r["name"], "owner": r["owner"],
                    "ownerName": fname(r["owner"], names) if r["owner"] is not None else None,
                    "members": facs[r["owner"]]["members"] if r["owner"] in facs else 0,
+                   "color": facs[r["owner"]]["color"] if r["owner"] in facs else None,
                    "home": r["owner"] == r["id"],
                    "disabled": r["disabled"], "w": r["gw"], "c": r["gc"], "t": r["gt"]}
                   for r in cells],
-        "top": [{"name": fname(f["id"], names), "n": f["cells"], "members": f["members"]} for f in top],
+        "top": [{"name": fname(f["id"], names), "n": f["cells"], "members": f["members"],
+                 "color": f["color"]} for f in top],
+        "colors": TEAM_COLORS,
     }
 
 
@@ -416,7 +439,8 @@ async def api_choose(request):
             if cell["disabled"]:
                 return err("Эта территория не входит в игру")
             if cell["owner"] is None:
-                await con.execute("insert into factions(id) values($1) on conflict do nothing", cid)
+                await con.execute("insert into factions(id, leader, color) values($1, $2, $3) "
+                                  "on conflict do nothing", cid, uid, await free_color(con))
                 await con.execute("update cells3 set owner=$1 where id=$1", cid)
                 fid, msg = cid, "Ты основал территорию! Зови друзей — их тапы будут складываться с твоими."
             else:
@@ -514,6 +538,23 @@ async def api_attack(request):
     for ids, text in alerts:
         asyncio.create_task(notify_many(request.app, ids, text))
     return web.json_response({"msg": msg, "state": state})
+
+
+async def api_color(request):
+    """Лидер команды меняет цвет своей территории."""
+    uid, body = await player_from_request(request)
+    color = str(body.get("color", "")).lower()
+    if color not in TEAM_COLORS:
+        return err("Такого цвета нет")
+    async with request.app["pool"].acquire() as con:
+        p = await con.fetchrow("select faction from players3 where id=$1", uid)
+        if p["faction"] is None:
+            return err("Сначала выбери территорию")
+        leader = await con.fetchval("select leader from factions where id=$1", p["faction"])
+        if leader != uid:
+            return err("Цвет меняет только лидер команды")
+        await con.execute("update factions set color=$2 where id=$1", p["faction"], color)
+        return web.json_response({"msg": "Цвет команды изменён", "state": await build_state(con, uid)})
 
 
 async def api_name(request):
@@ -638,6 +679,7 @@ def make_app():
     app.router.add_post("/api/defend", api_defend)
     app.router.add_post("/api/attack", api_attack)
     app.router.add_post("/api/name", api_name)
+    app.router.add_post("/api/color", api_color)
     app.router.add_post("/api/toggle", api_toggle)
     SimpleRequestHandler(dispatcher=dp, bot=app["bot"], secret_token=WEBHOOK_SECRET).register(
         app, path=WEBHOOK_PATH)

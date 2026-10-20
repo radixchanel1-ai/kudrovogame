@@ -18,7 +18,12 @@ header{display:flex;justify-content:space-around;align-items:center;padding:6px 
 .stat span{color:var(--muted);font-size:10px}
 #topBtn{flex:0 0 auto;background:none;font-size:20px;padding:4px 8px}
 #map{flex:1;min-height:0;background:#0b1118}
-.cl{pointer-events:none;display:flex;align-items:center;justify-content:center;text-align:center;color:#fff;font-weight:800;font-size:13px;line-height:1.15;white-space:normal;word-break:break-word;text-shadow:0 0 3px #000,0 0 3px #000,0 0 6px #000}
+.cl{pointer-events:none;width:0!important;height:0!important;overflow:visible}
+.lb{position:absolute;left:0;top:0;transform:translate(-50%,-50%);width:var(--lw,100px);font-size:var(--fs,12px);display:var(--ld,block);text-align:center;color:#fff;font-weight:800;line-height:1.1;white-space:normal;overflow-wrap:break-word;hyphens:auto;text-shadow:0 0 3px #000,0 0 3px #000,0 0 5px #000}
+.sw{display:inline-block;width:12px;height:12px;border-radius:50%;vertical-align:-1px;margin-right:5px;border:1px solid #0006}
+#palette{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin:14px 0}
+#palette button{height:44px;border-radius:12px;border:3px solid transparent;padding:0}
+#palette button.cur{border-color:#fff}
 #hint{background:#7a5c00;color:#fff;font-size:13px;padding:7px 12px;text-align:center;display:none}
 #info{background:var(--panel);padding:10px 12px;min-height:112px}
 .title{font-weight:700;font-size:16px;display:flex;justify-content:space-between;align-items:center;gap:8px}
@@ -83,6 +88,11 @@ button:disabled{opacity:.4}
   <p id="cText"></p>
   <div class="btns"><button id="cNo">Отмена</button><button class="primary" id="cYes">Да</button></div>
 </div></div>
+<div class="modal" id="colorModal"><div class="box">
+  <div class="title">🎨 Цвет команды</div>
+  <div id="palette"></div>
+  <div class="btns"><button id="colClose">Закрыть</button></div>
+</div></div>
 <div class="modal" id="topModal"><div class="box">
   <div class="title">🏆 Рейтинг</div>
   <ol id="topList"></ol>
@@ -126,8 +136,9 @@ $('cNo').onclick = () => $('confirmModal').style.display = 'none';
 
 const pw = o => o.w + o.c * 10 + o.t * 100;
 const myTeam = () => ST && ST.team ? ST.team.id : null;
-const ownerColor = c => c.disabled ? OFF : c.owner == null ? FREE
-  : (c.owner === myTeam() ? MINE : `hsl(${(Number(c.owner) * 137) % 360} 70% 50%)`);
+const freeTint = id => `hsl(${(id * 47) % 360} 30% 62%)`;
+const ownerColor = c => c.disabled ? OFF : c.owner == null ? freeTint(c.id)
+  : (c.color || `hsl(${(Number(c.owner) * 137) % 360} 70% 50%)`);
 const cellName = c => c.name || 'Территория без названия';
 const myCells = () => myTeam() == null ? [] : ST.cells.filter(c => c.owner === myTeam());
 const army = c => `${c.w} 🪖 · ${c.c} 💥 · ${c.t} 🛡`;
@@ -147,11 +158,13 @@ function renderMap() {
     const show = !c.disabled || editMode;
     if (show && !map.hasLayer(p)) { p.addTo(map); labels[c.id].addTo(map); }
     if (!show) { if (map.hasLayer(p)) { p.remove(); labels[c.id].remove(); } continue; }
+    const mine = c.owner != null && c.owner === myTeam();
     p.setStyle({ fillColor: ownerColor(c),
-                 fillOpacity: c.disabled ? 0.35 : c.owner == null ? 0.25 : 0.55,
-                 color: sel === c.id ? '#f1c40f' : '#1b2633', weight: sel === c.id ? 4 : 1.5 });
+                 fillOpacity: c.disabled ? 0.35 : c.owner == null ? 0.22 : 0.6,
+                 color: sel === c.id ? '#f1c40f' : mine ? '#ffffff' : '#1b2633',
+                 weight: sel === c.id ? 4 : mine ? 2.5 : 1.5 });
     const el = labels[c.id].getElement();
-    if (el) el.innerHTML = c.disabled ? '' : (c.home ? '🏠 ' : '') + esc(c.name || '');
+    if (el) el.innerHTML = c.disabled || !(c.name || c.home) ? '' : `<div class="lb">${c.home ? '🏠 ' : ''}${esc(c.name || '')}</div>`;
   }
 }
 function renderHUD() {
@@ -178,8 +191,9 @@ function renderInfo() {
   if (sel == null) {
     const t = ST.team;
     box.innerHTML = t
-      ? `<div class="title"><span>🏠 ${esc(t.name)}</span><span class="tag" style="background:${MINE}">👥 ${t.members}</span></div><div class="sub">Тапы всей команды складываются: 10 — воин, 100 — пушка, 1000 — танк. Выбери соту на карте: свою — чтобы отправить резерв в защиту, соседнюю — чтобы атаковать.</div>`
-      : '<div class="title">Захват Кудрово</div><div class="sub">Выбери территорию на карте. Серая — основать свою, цветная — вступить в команду. Тапы команды складываются, так быстрее копятся пушки и танки.</div>';
+      ? `<div class="title"><span><span class="sw" style="background:${t.color}"></span>${esc(t.name)}</span><span class="tag" style="background:#2c3a4b">👥 ${t.members}${t.leader ? ' · 👑 ты лидер' : ''}</span></div><div class="sub">Тапы всей команды складываются: 10 — воин, 100 — пушка, 1000 — танк. Выбери соту на карте: свою — чтобы отправить резерв в защиту, соседнюю — чтобы атаковать.</div>` + (t.leader ? '<div class="btns"><button class="small" id="colBtn">🎨 Цвет команды</button></div>' : '')
+      : '<div class="title">Битва за Кудрово</div><div class="sub">Выбери территорию на карте. Бледная сота — основать свою, яркая — вступить в команду. Тапы команды складываются, так быстрее копятся пушки и танки.</div>';
+    if ($('colBtn')) $('colBtn').onclick = openColors;
     return;
   }
   const c = cellById[sel], r = reserve(), own = c.owner != null && c.owner === myTeam(), hasLand = !!ST.team;
@@ -274,6 +288,18 @@ $('tapBtn').addEventListener('pointerdown', e => {
   haptic('light'); renderHUD(); if (sel != null) renderInfo();
 });
 
+function openColors() {
+  const pal = $('palette'); pal.innerHTML = '';
+  for (const col of ST.colors) {
+    const b = document.createElement('button'); b.style.background = col;
+    if (ST.team && ST.team.color === col) b.className = 'cur';
+    b.onclick = () => { $('colorModal').style.display = 'none'; act('/api/color', { color: col }); };
+    pal.appendChild(b);
+  }
+  $('colorModal').style.display = 'flex';
+}
+$('colClose').onclick = () => $('colorModal').style.display = 'none';
+
 let nameIdx = null;
 function openName(id) {
   nameIdx = id; $('nameInput').value = cellById[id].name || '';
@@ -289,7 +315,7 @@ $('nameInput').addEventListener('keydown', e => { if (e.key === 'Enter') $('nOk'
 $('topBtn').onclick = () => {
   if (!ST) return;
   $('topList').innerHTML = ST.top.length
-    ? ST.top.map(r => `<li>${esc(r.name)} — ${r.n} 🗺 · ${r.members} 👥</li>`).join('')
+    ? ST.top.map(r => `<li><span class="sw" style="background:${r.color}"></span>${esc(r.name)} — ${r.n} 🗺 · ${r.members} 👥</li>`).join('')
     : '<li>Пока никто ничего не захватил</li>';
   $('topModal').style.display = 'flex';
 };
@@ -311,8 +337,20 @@ $('tClose').onclick = () => $('topModal').style.display = 'none';
     });
     polys[c.id] = p;
     labels[c.id] = L.marker(c.center, { interactive: false,
-      icon: L.divIcon({ className: 'cl', html: '', iconSize: [130, 48], iconAnchor: [65, 24] }) });
+      icon: L.divIcon({ className: 'cl', html: '', iconSize: [0, 0], iconAnchor: [0, 0] }) });
   }
+  // подписи растут и уменьшаются вместе с сотами, чтобы не налезать друг на друга
+  const scaleLabels = () => {
+    const pts = GRID.cells[0].poly;
+    const a = map.latLngToContainerPoint(pts[1]), b = map.latLngToContainerPoint(pts[4]);
+    const hexH = a.distanceTo(b);               // высота соты в пикселях
+    const hexW = hexH * 0.866;
+    const el = $('map').style;
+    el.setProperty('--lw', Math.round(hexW * 0.92) + 'px');
+    el.setProperty('--fs', Math.max(6, Math.min(18, hexW / 7.5)).toFixed(1) + 'px');
+    el.setProperty('--ld', hexW < 34 ? 'none' : 'block');
+  };
+  map.on('zoom zoomend viewreset', scaleLabels); scaleLabels();
   if (!initData) { $('info').innerHTML = '<div class="sub">Открой игру через бота в Telegram.</div>'; return; }
   await refresh();
   setInterval(flush, 1000);
