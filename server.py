@@ -310,7 +310,7 @@ def cell_id(body):
 
 
 def fname(fid, names):
-    return names.get(fid) or f"Территория {fid + 1}"
+    return names.get(fid) or "Территория без названия"
 
 
 async def build_state(con, uid):

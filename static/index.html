@@ -18,8 +18,7 @@ header{display:flex;justify-content:space-around;align-items:center;padding:6px 
 .stat span{color:var(--muted);font-size:10px}
 #topBtn{flex:0 0 auto;background:none;font-size:20px;padding:4px 8px}
 #map{flex:1;min-height:0;background:#0b1118}
-.cl{pointer-events:none;text-align:center;color:#fff;font-weight:700;font-size:12px;line-height:1.1;text-shadow:0 0 3px #000,0 0 3px #000}
-.cl small{display:block;font-size:9px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.cl{pointer-events:none;display:flex;align-items:center;justify-content:center;text-align:center;color:#fff;font-weight:800;font-size:13px;line-height:1.15;white-space:normal;word-break:break-word;text-shadow:0 0 3px #000,0 0 3px #000,0 0 6px #000}
 #hint{background:#7a5c00;color:#fff;font-size:13px;padding:7px 12px;text-align:center;display:none}
 #info{background:var(--panel);padding:10px 12px;min-height:112px}
 .title{font-weight:700;font-size:16px;display:flex;justify-content:space-between;align-items:center;gap:8px}
@@ -129,7 +128,7 @@ const pw = o => o.w + o.c * 10 + o.t * 100;
 const myTeam = () => ST && ST.team ? ST.team.id : null;
 const ownerColor = c => c.disabled ? OFF : c.owner == null ? FREE
   : (c.owner === myTeam() ? MINE : `hsl(${(Number(c.owner) * 137) % 360} 70% 50%)`);
-const cellName = c => c.name || ('Территория ' + (c.id + 1));
+const cellName = c => c.name || 'Территория без названия';
 const myCells = () => myTeam() == null ? [] : ST.cells.filter(c => c.owner === myTeam());
 const army = c => `${c.w} 🪖 · ${c.c} 💥 · ${c.t} 🛡`;
 
@@ -152,7 +151,7 @@ function renderMap() {
                  fillOpacity: c.disabled ? 0.35 : c.owner == null ? 0.25 : 0.55,
                  color: sel === c.id ? '#f1c40f' : '#1b2633', weight: sel === c.id ? 4 : 1.5 });
     const el = labels[c.id].getElement();
-    if (el) el.innerHTML = c.disabled ? '' : `${c.home ? '🏠' : ''}${pw(c)}<small>${esc(c.name || '')}</small>`;
+    if (el) el.innerHTML = c.disabled ? '' : (c.home ? '🏠 ' : '') + esc(c.name || '');
   }
 }
 function renderHUD() {
@@ -312,7 +311,7 @@ $('tClose').onclick = () => $('topModal').style.display = 'none';
     });
     polys[c.id] = p;
     labels[c.id] = L.marker(c.center, { interactive: false,
-      icon: L.divIcon({ className: 'cl', html: '', iconSize: [70, 28], iconAnchor: [35, 14] }) });
+      icon: L.divIcon({ className: 'cl', html: '', iconSize: [130, 48], iconAnchor: [65, 24] }) });
   }
   if (!initData) { $('info').innerHTML = '<div class="sub">Открой игру через бота в Telegram.</div>'; return; }
   await refresh();
