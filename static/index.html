@@ -18,6 +18,11 @@ header{display:flex;justify-content:space-around;align-items:center;padding:6px 
 .stat span{color:var(--muted);font-size:10px}
 #topBtn{flex:0 0 auto;background:none;font-size:20px;padding:4px 8px}
 #map{flex:1;min-height:0;background:#0b1118;position:relative}
+/* тёмная «военная» карта: красим обычную карту фильтром, команды на ней выглядят ярче */
+.leaflet-tile-pane{filter:invert(1) hue-rotate(185deg) brightness(.78) contrast(1.05) saturate(.45)}
+/* копирайт карты — маленький и незаметный (по лицензии OpenStreetMap его нельзя убрать совсем) */
+.leaflet-control-attribution{background:transparent!important;font-size:8px!important;line-height:1.2!important;padding:0 4px!important;opacity:.45}
+.leaflet-control-attribution,.leaflet-control-attribution a{color:#9fb3c8!important;text-decoration:none!important}
 #fx{position:absolute;inset:0;pointer-events:none;z-index:650;overflow:hidden}
 .fx{position:absolute;left:0;top:0;pointer-events:none;line-height:1;will-change:transform,opacity;filter:drop-shadow(0 2px 2px #000a)}
 .ring{position:absolute;left:0;top:0;border-radius:50%;border:4px solid #fff;pointer-events:none;box-sizing:border-box}
@@ -617,8 +622,9 @@ $('tClose').onclick = () => $('topModal').style.display = 'none';
 (async function init() {
   GRID = await (await fetch('/api/grid')).json();
   map = L.map('map', { zoomControl: false, maxBoundsViscosity: 0.6 }).fitBounds(GRID.bounds);
+  map.attributionControl.setPrefix(false);   // убираем «Leaflet» с флажком
   L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png',
-              { maxZoom: 18, attribution: '© OpenStreetMap' }).addTo(map);
+              { maxZoom: 18, attribution: '© <a href="https://www.openstreetmap.org/copyright">OSM</a>' }).addTo(map);
   for (const c of GRID.cells) {
     const p = L.polygon(c.poly, { fillColor: FREE, fillOpacity: 0.25, color: '#1b2633', weight: 1.5 });
     p.on('click', () => {
