@@ -528,20 +528,19 @@ async function animPaid(item, cell, state) {
 }
 
 /* ---------- Выбор, сколько войск отправить ---------- */
-const UNITS = [['w', '🪖 Воины', 1], ['c', '💥 Пушки', 10], ['t', '🛡 Танки', 100]];
+const UNITS = [['w', '🪖 Воины', 1, [5, 10, 50]], ['c', '💥 Пушки', 10, [1, 3, 10]], ['t', '🛡 Танки', 100, [1, 2, 3]]];
 let sendCtx = null;
 function openSend(mode, cell) {
   const r = reserve();
   if (!r.power) { toast('Резерв пуст — тапайте!'); return; }
   sendCtx = { mode, cell, have: { w: r.w, c: r.c, t: r.t }, n: { w: r.w, c: r.c, t: r.t } };  // по умолчанию — все
   $('sendTitle').textContent = (mode === 'attack' ? '⚔️ В атаку на «' : '🛡 В защиту «') + cellName(cellById[cell]) + '»';
-  $('sendUnits').innerHTML = UNITS.map(([k, label, p]) => `
+  $('sendUnits').innerHTML = UNITS.map(([k, label, p, steps]) => `
     <div class="unit" data-k="${k}" style="${r[k] ? '' : 'opacity:.35'}">
       <div class="uname">${label}<small>есть ${r[k]} · сила ${p} за шт.</small></div>
       <div class="cnt" id="cnt_${k}"></div>
       <div class="quick">
-        <button data-d="0">0</button><button data-d="5">+5</button><button data-d="10">+10</button>
-        <button data-d="50">+50</button><button data-d="all">Все</button>
+        <button data-d="0">0</button>${steps.map(d => `<button data-d="${d}">+${d}</button>`).join('')}<button data-d="all">Все</button>
       </div>
     </div>`).join('');
   $('sendUnits').querySelectorAll('.unit').forEach(u => u.querySelectorAll('button').forEach(b => b.onclick = () => {
