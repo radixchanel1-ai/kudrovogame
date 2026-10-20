@@ -58,6 +58,7 @@ button:disabled{opacity:.4}
     <div class="stat"><b id="sT">0</b><span>🛡 танки</span></div>
     <div class="stat"><b id="sP">0</b><span>⚔️ резерв</span></div>
     <div class="stat"><b id="sM">0</b><span>🗺 террит.</span></div>
+    <button id="editBtn" title="Правка границ" style="display:none;opacity:.5;flex:0 0 auto;background:none;font-size:20px;padding:4px 6px">✂️</button>
     <button id="topBtn" title="Рейтинг">🏆</button>
   </header>
   <div id="hint"></div>
@@ -96,7 +97,7 @@ const initData = tg ? tg.initData : '';
 const $ = id => document.getElementById(id);
 const esc = s => String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 
-let GRID = null, ST = null, sel = null, pending = 0, inflight = 0;
+let GRID = null, ST = null, sel = null, pending = 0, inflight = 0, editMode = false, fitKey = '';
 let map, polys = {}, labels = {}, cellById = {};
 const FREE = '#5b6b7d', MINE = '#2ecc71', OFF = '#111820';
 
@@ -143,8 +144,11 @@ function reserve() {
 function renderMap() {
   for (const c of ST.cells) {
     const p = polys[c.id]; if (!p) continue;
+    const show = !c.disabled || editMode;
+    if (show && !map.hasLayer(p)) { p.addTo(map); labels[c.id].addTo(map); }
+    if (!show) { if (map.hasLayer(p)) { p.remove(); labels[c.id].remove(); } continue; }
     p.setStyle({ fillColor: ownerColor(c),
-                 fillOpacity: c.disabled ? 0.65 : c.owner == null ? 0.25 : 0.55,
+                 fillOpacity: c.disabled ? 0.35 : c.owner == null ? 0.25 : 0.55,
                  color: sel === c.id ? '#f1c40f' : '#1b2633', weight: sel === c.id ? 4 : 1.5 });
     const el = labels[c.id].getElement();
     if (el) el.innerHTML = c.disabled ? '' : `${c.home ? '🏠' : ''}${pw(c)}<small>${esc(c.name || '')}</small>`;
@@ -204,10 +208,30 @@ function renderInfo() {
     mk(c.disabled ? '✅ Вернуть в игру' : '🚫 Не Кудрово', 'small', () => act('/api/toggle', { cell: c.id }));
   }
 }
+function fitMap() {
+  const active = ST.cells.filter(c => !c.disabled || editMode);
+  const key = active.map(c => c.id).join(',');
+  if (key === fitKey || !active.length) return;
+  const first = fitKey === ''; fitKey = key;
+  const b = L.latLngBounds([]);
+  for (const c of active) for (const pt of GRID.cells[c.id].poly) b.extend(pt);
+  map.setMaxBounds(null);
+  map.setMinZoom(Math.max(10, map.getBoundsZoom(b) - 1));
+  map.setMaxBounds(b.pad(0.8));
+  if (first) map.fitBounds(b, { padding: [6, 6] });
+}
 function renderAll() {
   cellById = {}; for (const c of ST.cells) cellById[c.id] = c;
-  renderMap(); renderHUD(); renderInfo();
+  if (sel != null && cellById[sel] && cellById[sel].disabled && !editMode) sel = null;
+  $('editBtn').style.display = ST.admin ? 'block' : 'none';
+  fitMap(); renderMap(); renderHUD(); renderInfo();
 }
+$('editBtn').onclick = () => {
+  editMode = !editMode;
+  $('editBtn').style.opacity = editMode ? 1 : 0.5;
+  toast(editMode ? '✂️ Правка границ: скрытые соты видны, их можно вернуть' : 'Правка границ выключена');
+  renderAll();
+};
 
 /* ---------- Сеть ---------- */
 async function refresh() {
@@ -267,20 +291,20 @@ $('tClose').onclick = () => $('topModal').style.display = 'none';
 /* ---------- Старт ---------- */
 (async function init() {
   GRID = await (await fetch('/api/grid')).json();
-  map = L.map('map', { zoomControl: false, maxBounds: GRID.bounds, minZoom: 13 }).fitBounds(GRID.bounds);
+  map = L.map('map', { zoomControl: false, maxBoundsViscosity: 0.6 }).fitBounds(GRID.bounds);
   L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png',
               { maxZoom: 18, attribution: '© OpenStreetMap' }).addTo(map);
   for (const c of GRID.cells) {
-    const p = L.polygon(c.poly, { fillColor: FREE, fillOpacity: 0.25, color: '#1b2633', weight: 1.5 }).addTo(map);
+    const p = L.polygon(c.poly, { fillColor: FREE, fillOpacity: 0.25, color: '#1b2633', weight: 1.5 });
     p.on('click', () => {
       if (!ST) return;
       const cell = cellById[c.id];
-      if (cell && cell.disabled && !ST.admin) { toast('Это не Кудрово — территория не в игре'); return; }
+      if (cell && cell.disabled && !editMode) return;
       sel = c.id; haptic(); renderAll();
     });
     polys[c.id] = p;
     labels[c.id] = L.marker(c.center, { interactive: false,
-      icon: L.divIcon({ className: 'cl', html: '', iconSize: [70, 28], iconAnchor: [35, 14] }) }).addTo(map);
+      icon: L.divIcon({ className: 'cl', html: '', iconSize: [70, 28], iconAnchor: [35, 14] }) });
   }
   if (!initData) { $('info').innerHTML = '<div class="sub">Открой игру через бота в Telegram.</div>'; return; }
   await refresh();
