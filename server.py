@@ -14,6 +14,7 @@
     а её защитники переходят на сторону победителя.
   * Админ задаёт названия территорий и отключает те, что не входят в Кудрово.
 """
+import asyncio
 import hashlib
 import hmac
 import json
@@ -124,9 +125,92 @@ create table if not exists cells2 (
 """
 
 
+OVERPASS_URLS = ["https://overpass-api.de/api/interpreter",
+                 "https://overpass.kumi.systems/api/interpreter"]
+OVERPASS_QUERY = ('[out:json][timeout:60];'
+                  'relation["boundary"="administrative"]["name"="Кудрово"];out geom;')
+
+
+async def fetch_kudrovo_boundary():
+    """Скачивает границу Кудрово из OpenStreetMap: список отрезков [(lat1,lon1,lat2,lon2)]."""
+    import aiohttp
+    last = None
+    for url in OVERPASS_URLS:
+        try:
+            async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=90)) as s:
+                async with s.post(url, data={"data": OVERPASS_QUERY},
+                                  headers={"User-Agent": "kudrovo-game/1.0"}) as r:
+                    r.raise_for_status()
+                    data = await r.json(content_type=None)
+            rels = [e for e in data.get("elements", []) if e.get("type") == "relation"]
+            if not rels:
+                raise RuntimeError("граница Кудрово не найдена")
+            rels.sort(key=lambda e: e.get("tags", {}).get("admin_level") != "8")
+            segs = []
+            for m in rels[0].get("members", []):
+                if m.get("type") != "way" or m.get("role") not in ("outer", "inner", ""):
+                    continue
+                g = m.get("geometry") or []
+                for a, b in zip(g, g[1:]):
+                    segs.append((a["lat"], a["lon"], b["lat"], b["lon"]))
+            if len(segs) < 3:
+                raise RuntimeError("пустая граница")
+            return segs
+        except Exception as e:
+            last = e
+    raise RuntimeError(f"не удалось скачать границу: {last}")
+
+
+def inside(lat, lon, segs):
+    """Точка внутри границы? (правило чёт-нечет по всем отрезкам)"""
+    res = False
+    for y1, x1, y2, x2 in segs:
+        if (y1 > lat) != (y2 > lat):
+            if lon < x1 + (lat - y1) * (x2 - x1) / (y2 - y1):
+                res = not res
+    return res
+
+
+async def trim_to_kudrovo(pool):
+    """Отключает территории, центр которых вне границы Кудрово. Возвращает (в игре, отключено)."""
+    segs = await fetch_kudrovo_boundary()
+    lats = [s[0] for s in segs]
+    lons = [s[1] for s in segs]
+    if (min(lats) < BOUNDS["south"] - 0.001 or max(lats) > BOUNDS["north"] + 0.001
+            or min(lons) < BOUNDS["west"] - 0.001 or max(lons) > BOUNDS["east"] + 0.001):
+        print(f"[КАРТА] ВНИМАНИЕ: Кудрово выходит за сетку. Граница: "
+              f"юг {min(lats):.4f} север {max(lats):.4f} запад {min(lons):.4f} восток {max(lons):.4f}",
+              flush=True)
+    out = [c["id"] for c in GRID["cells"] if not inside(c["center"][0], c["center"][1], segs)]
+    async with pool.acquire() as con:
+        async with con.transaction():
+            await con.execute("update cells2 set disabled=false")
+            await con.execute("update players2 set home=null where home = any($1::int[])", out)
+            await con.execute("update cells2 set disabled=true, owner=null where id = any($1::int[])", out)
+            await con.execute("insert into meta(key, value) values('trimmed', '1') "
+                              "on conflict (key) do update set value='1'")
+    return N_CELLS - len(out), len(out)
+
+
+async def auto_trim(app):
+    """Один раз после первого запуска обрезает карту по границе Кудрово."""
+    try:
+        async with app["pool"].acquire() as con:
+            if await con.fetchval("select value from meta where key='trimmed'"):
+                return
+        kept, removed = await trim_to_kudrovo(app["pool"])
+        print(f"[КАРТА] обрезано по границе Кудрово: в игре {kept}, отключено {removed}", flush=True)
+        for admin in ADMIN_IDS:
+            await notify(app, admin, f"🗺 Карта обрезана по границе Кудрово: в игре {kept} территорий, "
+                                     f"отключено {removed}. Поправить можно кнопками в игре.")
+    except Exception as e:
+        print(f"[КАРТА] не получилось обрезать автоматически: {e}", flush=True)
+
+
 async def init_db(pool):
     async with pool.acquire() as con:
         await con.execute(SCHEMA)
+        await con.execute("create table if not exists meta (key text primary key, value text)")
         existing = {r["id"] for r in await con.fetch("select id from cells2")}
         old_names = {}
         try:  # названия из первой версии игры, если ты уже успел их задать
@@ -421,6 +505,22 @@ async def cmd_myid(message: Message):
     await message.answer(f"Твой Telegram ID: {message.from_user.id}")
 
 
+@dp.message(Command("trim"))
+async def cmd_trim(message: Message):
+    """Админ: заново обрезать карту по границе Кудрово (сбрасывает ручные правки границ)."""
+    if message.from_user.id not in ADMIN_IDS:
+        return
+    await message.answer("Скачиваю границу Кудрово…")
+    try:
+        kept, removed = await trim_to_kudrovo(APP["pool"])
+        await message.answer(f"Готово: в игре {kept} территорий, отключено {removed}.")
+    except Exception as e:
+        await message.answer(f"Не получилось: {e}")
+
+
+APP = {}
+
+
 # ---------------------------------------------------------------- Запуск
 def check_database_url():
     try:
@@ -448,6 +548,8 @@ async def on_startup(app):
                           drop_pending_updates=False)
     await bot.set_chat_menu_button(
         menu_button=MenuButtonWebApp(text="Играть", web_app=WebAppInfo(url=BASE_URL + "/")))
+    APP["pool"] = app["pool"]
+    app["trim_task"] = asyncio.create_task(auto_trim(app))
 
 
 async def on_cleanup(app):
