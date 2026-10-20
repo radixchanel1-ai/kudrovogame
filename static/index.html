@@ -246,10 +246,12 @@ function renderInfo() {
       const ok = adjacentToMe(c.id);
       mk(ok ? `⚔️ В атаку (${r.power} против ${pw(c)})` : 'Нет общей границы с тобой',
          r.power > pw(c) ? 'primary' : 'danger', () => act('/api/attack', { cell: c.id }), !ok || r.power === 0);
-      if (pw(c) > 0) {
-        box.insertAdjacentHTML('beforeend', '<div class="btns" id="iShop">' + shopBtn('air', c.id, '💣 Авиаудар') + shopBtn('missile', c.id, '☢️ Ракета') + '</div>');
-        bindShop($('iShop'));
-      }
+    }
+    // платные кнопки видны на любой соте, пока игрок в команде
+    if (hasLand) {
+      const strikes = !own && pw(c) > 0 ? shopBtn('air', c.id, '💣 Авиаудар') + shopBtn('missile', c.id, '☢️ Ракета') : '';
+      box.insertAdjacentHTML('beforeend', '<div class="btns" id="iShop">' + strikes + shopBtn('reinf', null, '🪖 Подкрепление') + '</div>');
+      bindShop($('iShop'));
     }
   }
   if (ST.admin) {
