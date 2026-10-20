@@ -51,7 +51,15 @@ button:disabled{opacity:.4}
 .modal .box{background:var(--panel);padding:16px;border-radius:14px;width:86%;max-width:340px}
 .modal input{width:100%;padding:10px;border-radius:8px;border:1px solid #33465b;background:#0f1720;color:var(--text);font-size:16px;margin:10px 0;user-select:text;-webkit-user-select:text}
 .modal p{color:var(--muted);font-size:14px;line-height:1.4}
-#topList{margin:10px 0;padding-left:22px;font-size:14px;line-height:1.7}
+#topList{margin:10px 0;padding:0;list-style:none;max-height:55vh;overflow-y:auto;-webkit-overflow-scrolling:touch}
+#topList li{display:grid;grid-template-columns:30px 1fr auto;align-items:center;gap:6px;padding:7px 6px;border-radius:9px;font-size:14px}
+#topList li.me{background:#2c3a4b;outline:2px solid #2ecc71}
+#topList .pl{color:var(--muted);font-weight:700;text-align:right}
+#topList .nm{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+#topList .nm small{display:block;color:var(--muted);font-size:11px}
+#topList .pt{font-weight:800;color:var(--accent)}
+#myRank{font-size:14px;margin-top:8px}
+#rankHelp{color:var(--muted);font-size:11px;line-height:1.35;margin:4px 0 0}
 </style>
 </head>
 <body>
@@ -94,8 +102,10 @@ button:disabled{opacity:.4}
   <div class="btns"><button id="colClose">Закрыть</button></div>
 </div></div>
 <div class="modal" id="topModal"><div class="box">
-  <div class="title">🏆 Рейтинг</div>
+  <div class="title">🏆 Рейтинг команд</div>
+  <div id="myRank"></div>
   <ol id="topList"></ol>
+  <p id="rankHelp">Очки: 100 за каждую соту + сила армии (защита + резерв) + 1 за каждые 10 тапов.</p>
   <div class="btns"><button id="tClose">Закрыть</button></div>
 </div></div>
 
@@ -314,10 +324,18 @@ $('nameInput').addEventListener('keydown', e => { if (e.key === 'Enter') $('nOk'
 
 $('topBtn').onclick = () => {
   if (!ST) return;
+  const myId = myTeam();
+  $('myRank').innerHTML = ST.rank
+    ? `Ваша команда: <b>${ST.rank} место</b> из ${ST.top.length}`
+    : 'Ты пока не в команде — выбери территорию на карте';
   $('topList').innerHTML = ST.top.length
-    ? ST.top.map(r => `<li><span class="sw" style="background:${r.color}"></span>${esc(r.name)} — ${r.n} 🗺 · ${r.members} 👥</li>`).join('')
-    : '<li>Пока никто ничего не захватил</li>';
+    ? ST.top.map((r, i) => `<li class="${r.id === myId ? 'me' : ''}"><span class="pl">${i < 3 ? ['🥇','🥈','🥉'][i] : i + 1}</span>
+        <span class="nm"><span class="sw" style="background:${r.color}"></span>${esc(r.name)}<small>${r.n} 🗺 · ${r.members} 👥 · ⚔️ ${r.power}</small></span>
+        <span class="pt">${r.points}</span></li>`).join('')
+    : '<li>Пока нет ни одной команды</li>';
   $('topModal').style.display = 'flex';
+  const meEl = $('topList').querySelector('.me');
+  if (meEl) meEl.scrollIntoView({ block: 'center' });
 };
 $('tClose').onclick = () => $('topModal').style.display = 'none';
 

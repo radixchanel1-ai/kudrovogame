@@ -103,6 +103,8 @@ def power(w, c, t):
     return w + c * 10 + t * 100
 
 
+POINTS_PER_CELL = 100
+
 # Цвета команд. Лидер может выбрать любой из них.
 TEAM_COLORS = ["#e74c3c", "#3498db", "#2ecc71", "#9b59b6", "#f39c12", "#1abc9c",
                "#e84393", "#f1c40f", "#00cec9", "#6c5ce7", "#d35400", "#fd79a8",
@@ -345,7 +347,16 @@ async def build_state(con, uid):
         team = {"id": f["id"], "name": fname(f["id"], names), "taps": f["taps"],
                 "rw": f["rw"], "rc": f["rc"], "rt": f["rt"], "members": f["members"],
                 "color": f["color"], "leader": f["leader"] == uid}
-    top = sorted(facs.values(), key=lambda f: (-f["cells"], -f["members"]))[:10]
+    # Очки: 100 за каждую соту + сила армии (защита всех сот + резерв) + 1 за каждые 10 тапов
+    garrison = {}
+    for r in cells:
+        if r["owner"] is not None:
+            garrison[r["owner"]] = garrison.get(r["owner"], 0) + power(r["gw"], r["gc"], r["gt"])
+    for f in facs.values():
+        f["power"] = garrison.get(f["id"], 0) + power(f["rw"], f["rc"], f["rt"])
+        f["points"] = f["cells"] * POINTS_PER_CELL + f["power"] + f["taps"] // 10
+    ranking = sorted(facs.values(), key=lambda f: (-f["points"], -f["cells"], -f["members"], f["id"]))
+    my_rank = next((i + 1 for i, f in enumerate(ranking) if f["id"] == me["faction"]), None)
     return {
         "me": dict(me),
         "team": team,
@@ -357,8 +368,9 @@ async def build_state(con, uid):
                    "home": r["owner"] == r["id"],
                    "disabled": r["disabled"], "w": r["gw"], "c": r["gc"], "t": r["gt"]}
                   for r in cells],
-        "top": [{"name": fname(f["id"], names), "n": f["cells"], "members": f["members"],
-                 "color": f["color"]} for f in top],
+        "top": [{"id": f["id"], "name": fname(f["id"], names), "n": f["cells"], "members": f["members"],
+                 "color": f["color"], "points": f["points"], "power": f["power"]} for f in ranking],
+        "rank": my_rank,
         "colors": TEAM_COLORS,
     }
 
