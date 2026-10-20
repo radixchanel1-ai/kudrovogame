@@ -132,6 +132,12 @@ create table if not exists players3 (
     taps bigint not null default 0,
     last_tap double precision not null default 0
 );
+create table if not exists bot_users (
+    id bigint primary key,
+    name text,
+    first_seen double precision not null,
+    last_seen double precision not null
+);
 create table if not exists orders (
     id text primary key,
     uid bigint not null,
@@ -175,6 +181,9 @@ async def init_db(pool):
         # лидер и цвет команды
         await con.execute("alter table factions add column if not exists leader bigint")
         await con.execute("alter table factions add column if not exists color text")
+        # для статистики
+        await con.execute("alter table players3 add column if not exists first_seen double precision")
+        await con.execute("alter table players3 add column if not exists last_seen double precision")
         await con.execute("update factions f set leader=(select min(id) from players3 p where p.faction=f.id) "
                           "where leader is null")
         for r in await con.fetch("select id from factions where color is null order by id"):
@@ -316,6 +325,48 @@ def display_name(user: dict) -> str:
 
 
 KNOWN_PLAYERS = {}   # кого уже записали в базу (id -> имя)
+ONLINE = {}          # id -> время последнего запроса из игры (в памяти)
+SEEN_SAVED = {}      # id -> когда последний раз записали last_seen в базу
+ONLINE_WINDOW = 120  # «сейчас в игре» = был активен последние 2 минуты
+
+
+def moscow_midnight():
+    t = time.time() + 3 * 3600
+    return t - t % 86400 - 3 * 3600
+
+
+async def gather_stats(con):
+    now = time.time()
+    day, week = moscow_midnight(), now - 7 * 86400
+    online = sum(1 for t in ONLINE.values() if now - t < ONLINE_WINDOW)
+    q = lambda sql, *a: con.fetchval(sql, *a)
+    return {
+        "online": online,
+        "bot_total": await q("select count(*) from bot_users"),
+        "bot_today": await q("select count(*) from bot_users where first_seen >= $1", day),
+        "players_total": await q("select count(*) from players3"),
+        "players_new_today": await q("select count(*) from players3 where first_seen >= $1", day),
+        "active_today": await q("select count(*) from players3 where last_seen >= $1", day),
+        "active_week": await q("select count(*) from players3 where last_seen >= $1", week),
+        "in_teams": await q("select count(*) from players3 where faction is not null"),
+        "teams": await q("select count(*) from factions"),
+        "taps": await q("select coalesce(sum(taps), 0) from players3"),
+        "stars_total": await q("select coalesce(sum(stars), 0) from orders where status='done'"),
+        "stars_today": await q("select coalesce(sum(stars), 0) from orders where status='done' and created >= $1", day),
+        "orders": await q("select count(*) from orders where status='done'"),
+    }
+
+
+def stats_text(st):
+    return (f"📊 Статистика «Битвы за Кудрово»\n\n"
+            f"🟢 Сейчас в игре: {st['online']}\n"
+            f"📅 Играли сегодня: {st['active_today']}\n"
+            f"🗓 Играли за 7 дней: {st['active_week']}\n\n"
+            f"🤖 Запускали бота (/start): {st['bot_total']} (сегодня новых: {st['bot_today']})\n"
+            f"🎮 Открывали игру: {st['players_total']} (сегодня новых: {st['players_new_today']})\n"
+            f"👥 В командах: {st['in_teams']} · команд: {st['teams']}\n"
+            f"👆 Всего тапов: {st['taps']}\n\n"
+            f"⭐ Звёзд заработано: {st['stars_total']} (сегодня: {st['stars_today']}) · покупок: {st['orders']}")
 
 
 async def player_from_request(request):
@@ -329,13 +380,20 @@ async def player_from_request(request):
         raise web.HTTPUnauthorized(text=json.dumps({"error": str(e) or "Нет доступа"}), content_type="application/json")
     uid = int(user["id"])
     name = display_name(user)
+    now = time.time()
+    ONLINE[uid] = now
     if KNOWN_PLAYERS.get(uid) != name:
         async with request.app["pool"].acquire() as con:
             await con.execute(
-                "insert into players3(id, name) values($1, $2) "
-                "on conflict (id) do update set name = excluded.name",
-                uid, name)
+                "insert into players3(id, name, first_seen, last_seen) values($1, $2, $3, $3) "
+                "on conflict (id) do update set name = excluded.name, last_seen = excluded.last_seen",
+                uid, name, now)
         KNOWN_PLAYERS[uid] = name
+        SEEN_SAVED[uid] = now
+    elif now - SEEN_SAVED.get(uid, 0) > 300:   # время последнего визита пишем не чаще раза в 5 минут
+        SEEN_SAVED[uid] = now
+        async with request.app["pool"].acquire() as con:
+            await con.execute("update players3 set last_seen=$2 where id=$1", uid, now)
     return uid, body
 
 
@@ -685,8 +743,29 @@ def play_keyboard():
     ]])
 
 
+async def track_bot_user(message: Message):
+    try:
+        now = time.time()
+        async with APP["pool"].acquire() as con:
+            await con.execute(
+                "insert into bot_users(id, name, first_seen, last_seen) values($1, $2, $3, $3) "
+                "on conflict (id) do update set name=excluded.name, last_seen=excluded.last_seen",
+                message.from_user.id, message.from_user.full_name[:60], now)
+    except Exception as e:
+        print(f"[СТАТИСТИКА] {e}", flush=True)
+
+
+@dp.message(Command("stats"))
+async def cmd_stats(message: Message):
+    if message.from_user.id not in ADMIN_IDS:
+        return
+    async with APP["pool"].acquire() as con:
+        await message.answer(stats_text(await gather_stats(con)))
+
+
 @dp.message(CommandStart())
 async def cmd_start(message: Message):
+    await track_bot_user(message)
     await message.answer(
         "Захват Кудрово! Выбери свою территорию или вступи в команду друзей. "
         "Тапайте вместе — тапы складываются, — собирайте воинов, пушки и танки "
@@ -738,6 +817,14 @@ async def check_order_target(con, item, faction, cid):
     if cell["owner"] == faction:
         return "Нельзя бить по своей территории"
     return None
+
+
+async def api_stats(request):
+    uid, _ = await player_from_request(request)
+    if uid not in ADMIN_IDS:
+        return err("Только для админа", 403)
+    async with request.app["pool"].acquire() as con:
+        return web.json_response(await gather_stats(con))
 
 
 async def api_buy(request):
@@ -952,6 +1039,7 @@ def make_app():
     app.router.add_post("/api/color", api_color)
     app.router.add_post("/api/buy", api_buy)
     app.router.add_post("/api/order", api_order)
+    app.router.add_post("/api/stats", api_stats)
     app.router.add_post("/api/toggle", api_toggle)
     SimpleRequestHandler(dispatcher=dp, bot=app["bot"], secret_token=WEBHOOK_SECRET).register(
         app, path=WEBHOOK_PATH)

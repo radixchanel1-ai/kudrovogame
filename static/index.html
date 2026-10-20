@@ -78,6 +78,7 @@ button:disabled{opacity:.4}
     <div class="stat"><b id="sT">0</b><span>🛡 танки</span></div>
     <div class="stat"><b id="sP">0</b><span>⚔️ резерв</span></div>
     <div class="stat"><b id="sM">0</b><span>🗺 террит.</span></div>
+    <button id="statsBtn" title="Статистика" style="display:none;flex:0 0 auto;background:none;font-size:20px;padding:4px 6px">📊</button>
     <button id="editBtn" title="Правка границ" style="display:none;opacity:.5;flex:0 0 auto;background:none;font-size:20px;padding:4px 6px">✂️</button>
     <button id="topBtn" title="Рейтинг">🏆</button>
   </header>
@@ -108,6 +109,11 @@ button:disabled{opacity:.4}
   <div class="title">🎨 Цвет команды</div>
   <div id="palette"></div>
   <div class="btns"><button id="colClose">Закрыть</button></div>
+</div></div>
+<div class="modal" id="statsModal"><div class="box">
+  <div class="title">📊 Статистика</div>
+  <div id="statsBody" class="sub" style="font-size:14px;line-height:1.8;margin:12px 0">Загрузка…</div>
+  <div class="btns"><button id="stRefresh">Обновить</button><button id="stClose">Закрыть</button></div>
 </div></div>
 <div class="modal" id="topModal"><div class="box">
   <div class="title">🏆 Рейтинг команд</div>
@@ -267,6 +273,7 @@ function renderAll() {
   cellById = {}; for (const c of ST.cells) cellById[c.id] = c;
   if (sel != null && cellById[sel] && cellById[sel].disabled && !editMode) sel = null;
   $('editBtn').style.display = ST.admin ? 'block' : 'none';
+  $('statsBtn').style.display = ST.admin ? 'block' : 'none';
   fitMap(); renderMap(); renderHUD(); renderInfo();
 }
 $('editBtn').onclick = () => {
@@ -555,6 +562,24 @@ function openColors() {
   }
   $('colorModal').style.display = 'flex';
 }
+async function loadStats() {
+  $('statsBody').textContent = 'Загрузка…';
+  try {
+    const s = await api('/api/stats');
+    const row = (i, t, v) => `<div>${i} ${t}: <b>${v}</b></div>`;
+    $('statsBody').innerHTML =
+      row('🟢', 'Сейчас в игре', s.online) + row('📅', 'Играли сегодня', s.active_today) +
+      row('🗓', 'Играли за 7 дней', s.active_week) + '<br>' +
+      row('🤖', 'Запускали бота', `${s.bot_total} <small>(+${s.bot_today} сегодня)</small>`) +
+      row('🎮', 'Открывали игру', `${s.players_total} <small>(+${s.players_new_today} сегодня)</small>`) +
+      row('👥', 'В командах', `${s.in_teams} · команд ${s.teams}`) + row('👆', 'Всего тапов', s.taps) + '<br>' +
+      row('⭐', 'Звёзд заработано', `${s.stars_total} <small>(${s.stars_today} сегодня)</small>`) +
+      row('🛒', 'Покупок', s.orders);
+  } catch (e) { $('statsBody').textContent = e.message; }
+}
+$('statsBtn').onclick = () => { $('statsModal').style.display = 'flex'; loadStats(); };
+$('stRefresh').onclick = loadStats;
+$('stClose').onclick = () => $('statsModal').style.display = 'none';
 $('colClose').onclick = () => $('colorModal').style.display = 'none';
 
 let nameIdx = null;
