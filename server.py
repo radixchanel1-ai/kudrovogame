@@ -585,8 +585,21 @@ async def api_choose(request):
         return state_response(await build_state(con, uid), msg)
 
 
+def chosen_army(body, f):
+    """Сколько войск отправить: из запроса {w, c, t}, но не больше, чем есть в резерве.
+    Если игра не указала количество — отправляется весь резерв."""
+    def take(key, have):
+        if key not in body:
+            return have
+        try:
+            return max(0, min(int(body[key]), have))
+        except (TypeError, ValueError):
+            return 0
+    return take("w", f["rw"]), take("c", f["rc"]), take("t", f["rt"])
+
+
 async def api_defend(request):
-    """Весь общий резерв команды уходит в защиту выбранной соты."""
+    """Выбранная часть общего резерва команды уходит в защиту соты."""
     uid, body = await player_from_request(request)
     cid = cell_id(body)
     if cid is None:
@@ -600,17 +613,20 @@ async def api_defend(request):
             cell = await con.fetchrow("select * from cells3 where id=$1 for update", cid)
             if cell["owner"] != p["faction"]:
                 return err("Это не ваша территория")
-            if power(f["rw"], f["rc"], f["rt"]) <= 0:
-                return err("Резерв пуст — тапайте!")
+            sw, sc, st = chosen_army(body, f)
+            if power(sw, sc, st) <= 0:
+                return err("Выбери, сколько войск отправить" if power(f["rw"], f["rc"], f["rt"]) else
+                           "Резерв пуст — тапайте!")
             await con.execute("update cells3 set gw=gw+$2, gc=gc+$3, gt=gt+$4 where id=$1",
-                              cid, f["rw"], f["rc"], f["rt"])
-            await con.execute("update factions set rw=0, rc=0, rt=0 where id=$1", f["id"])
+                              cid, sw, sc, st)
+            await con.execute("update factions set rw=rw-$2, rc=rc-$3, rt=rt-$4 where id=$1",
+                              f["id"], sw, sc, st)
         invalidate_world()
-        return state_response(await build_state(con, uid), "Армия ушла в защиту")
+        return state_response(await build_state(con, uid), f"В защиту ушло войск на силу {power(sw, sc, st)}")
 
 
 async def api_attack(request):
-    """Весь общий резерв команды идёт в атаку на соседнюю соту."""
+    """Выбранная часть общего резерва команды идёт в атаку на соседнюю соту."""
     uid, body = await player_from_request(request)
     cid = cell_id(body)
     if cid is None:
@@ -631,10 +647,15 @@ async def api_attack(request):
             owned = {r["id"] for r in await con.fetch("select id from cells3 where owner=$1", fid)}
             if not any(n in owned for n in NEIGHBORS[cid]):
                 return err("Нападать можно только на соседние территории")
-            A = power(f["rw"], f["rc"], f["rt"])
+            aw, ac, at = chosen_army(body, f)
+            A = power(aw, ac, at)
             D = power(cell["gw"], cell["gc"], cell["gt"])
             if A <= 0:
-                return err("Резерв пуст — тапайте!")
+                return err("Выбери, сколько войск отправить" if power(f["rw"], f["rc"], f["rt"]) else
+                           "Резерв пуст — тапайте!")
+            # отправленные войска уходят из резерва при любом исходе боя
+            await con.execute("update factions set rw=rw-$2, rc=rc-$3, rt=rt-$4 where id=$1",
+                              fid, aw, ac, at)
             names = {r["id"]: r["name"] for r in await con.fetch("select id, name from cells3")}
             name = fname(cid, names)
             team = fname(fid, names)
@@ -643,13 +664,11 @@ async def api_attack(request):
                 "select id from players3 where faction=$1", victim)] if victim is not None else [])
             if A > D:
                 keep = 1 - D / A
-                sw, sc, st = (math.floor(f["rw"] * keep), math.floor(f["rc"] * keep),
-                              math.floor(f["rt"] * keep))
+                sw, sc, st = (math.floor(aw * keep), math.floor(ac * keep), math.floor(at * keep))
                 # защитники переходят на сторону победителя
                 await con.execute(
                     "update cells3 set owner=$2, gw=gw+$3, gc=gc+$4, gt=gt+$5 where id=$1",
                     cid, fid, sw, sc, st)
-                await con.execute("update factions set rw=0, rc=0, rt=0 where id=$1", fid)
                 msg = f"«{name}» захвачена! Защитники (сила {D}) перешли к вам"
                 if victim is not None:
                     gone = await dissolve_if_empty(con, victim)
@@ -663,7 +682,6 @@ async def api_attack(request):
                     "update cells3 set gw=$2, gc=$3, gt=$4 where id=$1", cid,
                     math.floor(cell["gw"] * keep_d), math.floor(cell["gc"] * keep_d),
                     math.floor(cell["gt"] * keep_d))
-                await con.execute("update factions set rw=0, rc=0, rt=0 where id=$1", fid)
                 msg = f"Атака отбита. Защита «{name}» ослабла"
                 if victim is not None:
                     alerts.append((victims, f"🛡 «{team}» напала на «{name}», но защита выстояла."))

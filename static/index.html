@@ -34,6 +34,14 @@ header{display:flex;justify-content:space-around;align-items:center;padding:6px 
 .sw{display:inline-block;width:12px;height:12px;border-radius:50%;vertical-align:-1px;margin-right:5px;border:1px solid #0006}
 button.star{background:linear-gradient(135deg,#f5b400,#e07a00);color:#1b1200}
 #iShop{margin-top:8px}
+#sendModal .unit{display:grid;grid-template-columns:1fr auto;align-items:center;gap:6px;margin:10px 0}
+#sendModal .uname{font-size:14px;font-weight:700}
+#sendModal .uname small{color:var(--muted);font-weight:500;display:block;font-size:11px}
+#sendModal .cnt{font-size:20px;font-weight:900;min-width:56px;text-align:right}
+#sendModal .quick{grid-column:1/-1;display:flex;gap:6px}
+#sendModal .quick button{flex:1;padding:7px 0;font-size:13px;border-radius:8px}
+#sendSum{margin:10px 0 12px;font-size:14px;color:var(--muted)}
+#sendSum b{color:var(--text)}
 #palette{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin:14px 0}
 #palette button{height:44px;border-radius:12px;border:3px solid transparent;padding:0}
 #palette button.cur{border-color:#fff}
@@ -109,6 +117,12 @@ button:disabled{opacity:.4}
   <div class="title" id="cTitle"></div>
   <p id="cText"></p>
   <div class="btns"><button id="cNo">Отмена</button><button class="primary" id="cYes">Да</button></div>
+</div></div>
+<div class="modal" id="sendModal"><div class="box">
+  <div class="title" id="sendTitle"></div>
+  <div id="sendUnits"></div>
+  <div id="sendSum"></div>
+  <div class="btns"><button id="sendCancel">Отмена</button><button class="primary" id="sendOk">Отправить</button></div>
 </div></div>
 <div class="modal" id="colorModal"><div class="box">
   <div class="title">🎨 Цвет команды</div>
@@ -246,11 +260,11 @@ function renderInfo() {
         'Вступить в «' + c.ownerName + '»?', 'Ваши тапы будут складываться в общую армию. Сменить команду потом нельзя.',
         () => act('/api/choose', { cell: c.id })));
     } else if (own) {
-      mk('🛡 В защиту (+' + r.power + ')', 'blue', () => act('/api/defend', { cell: c.id }), r.power === 0);
+      mk('🛡 В защиту…', 'blue', () => openSend('defend', c.id), r.power === 0);
     } else {
       const ok = adjacentToMe(c.id);
       mk(ok ? `⚔️ В атаку (${r.power} против ${pw(c)})` : 'Нет общей границы с тобой',
-         r.power > pw(c) ? 'primary' : 'danger', () => act('/api/attack', { cell: c.id }), !ok || r.power === 0);
+         r.power > pw(c) ? 'primary' : 'danger', () => openSend('attack', c.id), !ok || r.power === 0);
     }
     // платные кнопки видны на любой соте, пока игрок в команде
     if (hasLand) {
@@ -513,13 +527,55 @@ async function animPaid(item, cell, state) {
   await sleep(300);
 }
 
+/* ---------- Выбор, сколько войск отправить ---------- */
+const UNITS = [['w', '🪖 Воины', 1], ['c', '💥 Пушки', 10], ['t', '🛡 Танки', 100]];
+let sendCtx = null;
+function openSend(mode, cell) {
+  const r = reserve();
+  if (!r.power) { toast('Резерв пуст — тапайте!'); return; }
+  sendCtx = { mode, cell, have: { w: r.w, c: r.c, t: r.t }, n: { w: r.w, c: r.c, t: r.t } };  // по умолчанию — все
+  $('sendTitle').textContent = (mode === 'attack' ? '⚔️ В атаку на «' : '🛡 В защиту «') + cellName(cellById[cell]) + '»';
+  $('sendUnits').innerHTML = UNITS.map(([k, label, p]) => `
+    <div class="unit" data-k="${k}" style="${r[k] ? '' : 'opacity:.35'}">
+      <div class="uname">${label}<small>есть ${r[k]} · сила ${p} за шт.</small></div>
+      <div class="cnt" id="cnt_${k}"></div>
+      <div class="quick">
+        <button data-d="0">0</button><button data-d="5">+5</button><button data-d="10">+10</button>
+        <button data-d="50">+50</button><button data-d="all">Все</button>
+      </div>
+    </div>`).join('');
+  $('sendUnits').querySelectorAll('.unit').forEach(u => u.querySelectorAll('button').forEach(b => b.onclick = () => {
+    const k = u.dataset.k, d = b.dataset.d, have = sendCtx.have[k];
+    sendCtx.n[k] = d === 'all' ? have : d === '0' ? 0 : Math.min(have, sendCtx.n[k] + Number(d));
+    haptic('light'); renderSend();
+  }));
+  renderSend();
+  $('sendModal').style.display = 'flex';
+}
+function renderSend() {
+  const n = sendCtx.n, P = pw(n);
+  for (const [k] of UNITS) $('cnt_' + k).textContent = n[k];
+  const c = cellById[sendCtx.cell], D = pw(c);
+  $('sendSum').innerHTML = sendCtx.mode === 'attack'
+    ? `Сила атаки: <b>${P}</b> против защиты <b>${D}</b> — ${P > D ? '<b style="color:#2ecc71">хватит для захвата</b>' : '<b style="color:#ff6b5b">не хватит</b>'}`
+    : `Защита станет: <b>${D}</b> → <b>${D + P}</b>`;
+  $('sendOk').disabled = P === 0;
+  $('sendOk').className = sendCtx.mode === 'attack' ? (P > D ? 'primary' : 'danger') : 'blue';
+}
+$('sendCancel').onclick = () => $('sendModal').style.display = 'none';
+$('sendOk').onclick = () => {
+  $('sendModal').style.display = 'none';
+  const { mode, cell, n } = sendCtx;
+  act(mode === 'attack' ? '/api/attack' : '/api/defend', { cell, w: n.w, c: n.c, t: n.t });
+};
+
 let busy = false;
 async function act(path, body) {
   if (busy) return; busy = true;
   try {
     while (inflight) await sleep(100);
     await flush();
-    const id = body.cell, army = reserve();
+    const id = body.cell, army = body.w != null ? { w: body.w, c: body.c, t: body.t } : reserve();
     let flight = null;
     if (path === '/api/attack' && id != null) {
       const from = GRID.neighbors[id].filter(n => cellById[n] && cellById[n].owner === myTeam())
