@@ -27,10 +27,12 @@ import time
 from urllib.parse import parse_qsl, urlsplit
 
 import asyncpg
-from aiogram import Bot, Dispatcher
+from aiogram import Bot, Dispatcher, F
 from aiogram.filters import Command, CommandStart
 from aiogram.types import (
     InlineKeyboardButton,
+    LabeledPrice,
+    PreCheckoutQuery,
     InlineKeyboardMarkup,
     MenuButtonWebApp,
     Message,
@@ -129,6 +131,18 @@ create table if not exists players3 (
     faction int,
     taps bigint not null default 0,
     last_tap double precision not null default 0
+);
+create table if not exists orders (
+    id text primary key,
+    uid bigint not null,
+    faction int,
+    item text not null,
+    cell int,
+    stars int not null,
+    status text not null,
+    charge_id text,
+    result text,
+    created double precision not null
 );
 create table if not exists cells3 (
     id int primary key,
@@ -417,7 +431,7 @@ async def build_state(con, uid):
     personal = json.dumps({"me": me, "team": team, "admin": uid in ADMIN_IDS,
                            "rank": w["rank"].get(r["faction"])}, ensure_ascii=False)
     return (personal[:-1] + ',"cells":' + w["cells_json"] + ',"top":' + w["top_json"]
-            + ',"colors":' + COLORS_JSON + '}')
+            + ',"colors":' + COLORS_JSON + ',"shop":' + SHOP_JSON + '}')
 
 
 def state_response(state, msg=None):
@@ -697,6 +711,192 @@ async def cmd_trim(message: Message):
     except Exception as e:
         await message.answer(f"Не получилось: {e}")
 
+# ---------------------------------------------------------------- Магазин (Telegram Stars)
+SHOP = {
+    "air": {"title": "💣 Авиаудар", "stars": 5,
+            "desc": "Уничтожает половину защиты выбранной территории. Бьёт по любой соте на карте."},
+    "missile": {"title": "☢️ Ракетный удар", "stars": 50,
+                "desc": "Полностью уничтожает защиту выбранной территории. Бьёт по любой соте на карте."},
+    "reinf": {"title": "🪖 Подкрепление", "stars": 15,
+              "desc": "+500 силы в общий резерв команды (5 танков)."},
+}
+SHOP_PUBLIC = [{"id": k, "title": v["title"], "stars": v["stars"], "desc": v["desc"]} for k, v in SHOP.items()]
+SHOP_JSON = json.dumps(SHOP_PUBLIC, ensure_ascii=False)
+
+
+async def check_order_target(con, item, faction, cid):
+    """Можно ли применить покупку? Возвращает текст ошибки или None."""
+    if faction is None:
+        return "Сначала выбери территорию"
+    if item == "reinf":
+        return None
+    if cid is None or not (0 <= cid < N_CELLS):
+        return "Нет такой территории"
+    cell = await con.fetchrow("select owner, disabled from cells3 where id=$1", cid)
+    if cell["disabled"]:
+        return "Эта территория не входит в игру"
+    if cell["owner"] == faction:
+        return "Нельзя бить по своей территории"
+    return None
+
+
+async def api_buy(request):
+    """Создаёт счёт в звёздах и возвращает ссылку для окна оплаты Telegram."""
+    uid, body = await player_from_request(request)
+    item = body.get("item")
+    if item not in SHOP:
+        return err("Нет такого товара")
+    cid = cell_id(body) if item != "reinf" else None
+    async with request.app["pool"].acquire() as con:
+        p = await con.fetchrow("select faction from players3 where id=$1", uid)
+        problem = await check_order_target(con, item, p["faction"], cid)
+        if problem:
+            return err(problem)
+        oid = hashlib.sha256(f"{uid}:{time.time()}:{random.random()}".encode()).hexdigest()[:20]
+        await con.execute(
+            "insert into orders(id, uid, faction, item, cell, stars, status, created) "
+            "values($1,$2,$3,$4,$5,$6,'new',$7)",
+            oid, uid, p["faction"], item, cid, SHOP[item]["stars"], time.time())
+    s = SHOP[item]
+    names = WORLD.get("names") or {}
+    target = f" по «{fname(cid, names)}»" if cid is not None else ""
+    link = await request.app["bot"].create_invoice_link(
+        title=s["title"], description=(s["desc"] + target)[:255], payload=oid,
+        currency="XTR", prices=[LabeledPrice(label=s["title"], amount=s["stars"])])
+    return web.json_response({"link": link, "order": oid})
+
+
+async def api_order(request):
+    """Статус заказа — игра ждёт, пока удар применится после оплаты."""
+    uid, body = await player_from_request(request)
+    async with request.app["pool"].acquire() as con:
+        o = await con.fetchrow("select status, item, cell, result from orders where id=$1 and uid=$2",
+                               str(body.get("order", "")), uid)
+        if not o:
+            return err("Заказ не найден")
+        if o["status"] == "new":
+            return web.json_response({"status": "new"})
+        invalidate_world()
+        state = await build_state(con, uid)
+    return web.Response(
+        text='{"status":' + json.dumps(o["status"]) + ',"item":' + json.dumps(o["item"])
+             + ',"cell":' + json.dumps(o["cell"]) + ',"msg":' + json.dumps(o["result"] or "", ensure_ascii=False)
+             + ',"state":' + state + '}', content_type="application/json")
+
+
+async def apply_order(app, oid, charge_id):
+    """Применяет оплаченный товар. Если применить нельзя — возвращает звёзды."""
+    alerts = []
+    refund = None
+    async with app["pool"].acquire() as con:
+        async with con.transaction():
+            o = await con.fetchrow("select * from orders where id=$1 for update", oid)
+            if not o or o["status"] != "new":
+                return  # уже обработан
+            problem = await check_order_target(con, o["item"], o["faction"], o["cell"])
+            fac_exists = o["faction"] is not None and await con.fetchval(
+                "select 1 from factions where id=$1", o["faction"])
+            if problem or not fac_exists:
+                await con.execute("update orders set status='refunded', charge_id=$2, result=$3 where id=$1",
+                                  oid, charge_id, problem or "Команда больше не существует")
+                refund = (o["uid"], problem or "Команда больше не существует")
+            else:
+                names = {r["id"]: r["name"] for r in await con.fetch("select id, name from cells3")}
+                pname = await con.fetchval("select name from players3 where id=$1", o["uid"])
+                team = fname(o["faction"], names)
+                if o["item"] == "reinf":
+                    await con.execute("update factions set rt = rt + 5 where id=$1", o["faction"])
+                    result = "🪖 Подкрепление прибыло: +500 силы в резерв команды!"
+                    mates = [r["id"] for r in await con.fetch(
+                        "select id from players3 where faction=$1 and id<>$2", o["faction"], o["uid"])]
+                    alerts.append((mates, f"🪖 {pname} вызвал подкрепление: +500 силы в резерв команды!"))
+                else:
+                    cell = await con.fetchrow("select * from cells3 where id=$1 for update", o["cell"])
+                    before = power(cell["gw"], cell["gc"], cell["gt"])
+                    if o["item"] == "air":
+                        await con.execute("update cells3 set gw=gw/2, gc=gc/2, gt=gt/2 where id=$1", o["cell"])
+                        what = "💣 Авиаудар"
+                    else:
+                        await con.execute("update cells3 set gw=0, gc=0, gt=0 where id=$1", o["cell"])
+                        what = "☢️ Ракетный удар"
+                    after = await con.fetchval("select gw + gc*10 + gt*100 from cells3 where id=$1", o["cell"])
+                    tname = fname(o["cell"], names)
+                    result = f"{what} по «{tname}»: защита {before} → {after}"
+                    if cell["owner"] is not None:
+                        victims = [r["id"] for r in await con.fetch(
+                            "select id from players3 where faction=$1", cell["owner"])]
+                        alerts.append((victims, f"{what}! Команда «{team}» ударила по «{tname}»: "
+                                                f"защита {before} → {after}. Срочно укрепляйтесь!"))
+                await con.execute("update orders set status='done', charge_id=$2, result=$3 where id=$1",
+                                  oid, charge_id, result)
+    invalidate_world()
+    if refund:
+        try:
+            await app["bot"].refund_star_payment(user_id=refund[0], telegram_payment_charge_id=charge_id)
+            await notify(app, refund[0], f"Удар не применён ({refund[1]}). Звёзды возвращены.")
+        except Exception as e:
+            print(f"[ОПЛАТА] не удалось вернуть звёзды по заказу {oid}: {e}", flush=True)
+    for ids, text in alerts:
+        asyncio.create_task(notify_many(app, ids, text))
+
+
+@dp.pre_checkout_query()
+async def on_pre_checkout(q: PreCheckoutQuery):
+    try:
+        async with APP["pool"].acquire() as con:
+            o = await con.fetchrow("select * from orders where id=$1", q.invoice_payload)
+            if not o or o["status"] != "new" or o["uid"] != q.from_user.id:
+                return await q.answer(ok=False, error_message="Заказ устарел, попробуй ещё раз из игры.")
+            problem = await check_order_target(con, o["item"], o["faction"], o["cell"])
+        if problem:
+            return await q.answer(ok=False, error_message=problem)
+        await q.answer(ok=True)
+    except Exception as e:
+        print(f"[ОПЛАТА] ошибка проверки: {e}", flush=True)
+        await q.answer(ok=False, error_message="Ошибка сервера, попробуй позже.")
+
+
+@dp.message(F.successful_payment)
+async def on_paid(message: Message):
+    sp = message.successful_payment
+    print(f"[ОПЛАТА] {message.from_user.id} оплатил {sp.total_amount} ⭐, заказ {sp.invoice_payload}", flush=True)
+    await apply_order(APP["app"], sp.invoice_payload, sp.telegram_payment_charge_id)
+
+
+@dp.message(Command("paysupport"))
+async def cmd_paysupport(message: Message):
+    await message.answer(
+        "Поддержка по оплате.\n\n"
+        "Если удар оплачен, но не сработал, звёзды возвращаются автоматически. "
+        "Если что-то пошло не так — напиши сюда, что случилось и когда, админ разберётся "
+        "и при необходимости вернёт звёзды.")
+    for admin in ADMIN_IDS:
+        await notify(APP["app"], admin, f"💬 /paysupport от {message.from_user.full_name} "
+                                        f"(id {message.from_user.id})")
+
+
+@dp.message(Command("refund"))
+async def cmd_refund(message: Message):
+    """Админ: /refund <id игрока> — вернуть звёзды за последнюю оплату игрока."""
+    if message.from_user.id not in ADMIN_IDS:
+        return
+    parts = (message.text or "").split()
+    if len(parts) < 2 or not parts[1].isdigit():
+        return await message.answer("Формат: /refund <id игрока>")
+    uid = int(parts[1])
+    async with APP["pool"].acquire() as con:
+        o = await con.fetchrow("select * from orders where uid=$1 and status='done' and charge_id is not null "
+                               "order by created desc limit 1", uid)
+        if not o:
+            return await message.answer("Оплаченных заказов у этого игрока нет.")
+        try:
+            await message.bot.refund_star_payment(user_id=uid, telegram_payment_charge_id=o["charge_id"])
+        except Exception as e:
+            return await message.answer(f"Не получилось: {e}")
+        await con.execute("update orders set status='refunded' where id=$1", o["id"])
+    await message.answer(f"Вернул {o['stars']} ⭐ игроку {uid} за «{SHOP[o['item']]['title']}».")
+
+
 
 # ---------------------------------------------------------------- Запуск
 def check_database_url():
@@ -722,7 +922,9 @@ async def on_startup(app):
     await init_db(app["pool"])
     APP["pool"] = app["pool"]
     bot = app["bot"]
+    APP["app"] = app
     await bot.set_webhook(BASE_URL + WEBHOOK_PATH, secret_token=WEBHOOK_SECRET,
+                          allowed_updates=dp.resolve_used_update_types(),
                           drop_pending_updates=False)
     await bot.set_chat_menu_button(
         menu_button=MenuButtonWebApp(text="Играть", web_app=WebAppInfo(url=BASE_URL + "/")))
@@ -748,6 +950,8 @@ def make_app():
     app.router.add_post("/api/attack", api_attack)
     app.router.add_post("/api/name", api_name)
     app.router.add_post("/api/color", api_color)
+    app.router.add_post("/api/buy", api_buy)
+    app.router.add_post("/api/order", api_order)
     app.router.add_post("/api/toggle", api_toggle)
     SimpleRequestHandler(dispatcher=dp, bot=app["bot"], secret_token=WEBHOOK_SECRET).register(
         app, path=WEBHOOK_PATH)

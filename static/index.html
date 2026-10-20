@@ -27,6 +27,8 @@ header{display:flex;justify-content:space-around;align-items:center;padding:6px 
 .cl{pointer-events:none;width:0!important;height:0!important;overflow:visible}
 .lb{position:absolute;left:0;top:0;transform:translate(-50%,-50%);width:var(--lw,100px);font-size:var(--fs,12px);display:var(--ld,block);text-align:center;color:#fff;font-weight:800;line-height:1.1;white-space:normal;overflow-wrap:break-word;hyphens:auto;text-shadow:0 0 3px #000,0 0 3px #000,0 0 5px #000}
 .sw{display:inline-block;width:12px;height:12px;border-radius:50%;vertical-align:-1px;margin-right:5px;border:1px solid #0006}
+button.star{background:linear-gradient(135deg,#f5b400,#e07a00);color:#1b1200}
+#iShop{margin-top:8px}
 #palette{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin:14px 0}
 #palette button{height:44px;border-radius:12px;border:3px solid transparent;padding:0}
 #palette button.cur{border-color:#fff}
@@ -207,9 +209,10 @@ function renderInfo() {
   if (sel == null) {
     const t = ST.team;
     box.innerHTML = t
-      ? `<div class="title"><span><span class="sw" style="background:${t.color}"></span>${esc(t.name)}</span><span class="tag" style="background:#2c3a4b">👥 ${t.members}${t.leader ? ' · 👑 ты лидер' : ''}</span></div><div class="sub">Тапы всей команды складываются: 10 — воин, 100 — пушка, 1000 — танк. Выбери соту на карте: свою — чтобы отправить резерв в защиту, соседнюю — чтобы атаковать.</div>` + (t.leader ? '<div class="btns"><button class="small" id="colBtn">🎨 Цвет команды</button></div>' : '')
+      ? `<div class="title"><span><span class="sw" style="background:${t.color}"></span>${esc(t.name)}</span><span class="tag" style="background:#2c3a4b">👥 ${t.members}${t.leader ? ' · 👑 ты лидер' : ''}</span></div><div class="sub">Тапы всей команды складываются: 10 — воин, 100 — пушка, 1000 — танк. Выбери соту на карте: свою — чтобы отправить резерв в защиту, соседнюю — чтобы атаковать.</div>` + '<div class="btns">' + shopBtn('reinf', null, '🪖 Подкрепление') + (t.leader ? '<button class="small" id="colBtn">🎨 Цвет</button>' : '') + '</div>'
       : '<div class="title">Битва за Кудрово</div><div class="sub">Выбери территорию на карте. Бледная сота — основать свою, яркая — вступить в команду. Тапы команды складываются, так быстрее копятся пушки и танки.</div>';
     if ($('colBtn')) $('colBtn').onclick = openColors;
+    bindShop(box);
     return;
   }
   const c = cellById[sel], r = reserve(), own = c.owner != null && c.owner === myTeam(), hasLand = !!ST.team;
@@ -237,6 +240,10 @@ function renderInfo() {
       const ok = adjacentToMe(c.id);
       mk(ok ? `⚔️ В атаку (${r.power} против ${pw(c)})` : 'Нет общей границы с тобой',
          r.power > pw(c) ? 'primary' : 'danger', () => act('/api/attack', { cell: c.id }), !ok || r.power === 0);
+      if (pw(c) > 0) {
+        box.insertAdjacentHTML('beforeend', '<div class="btns" id="iShop">' + shopBtn('air', c.id, '💣 Авиаудар') + shopBtn('missile', c.id, '☢️ Ракета') + '</div>');
+        bindShop($('iShop'));
+      }
     }
   }
   if (ST.admin) {
@@ -424,6 +431,74 @@ async function flush() {
   catch (e) { toast(e.message); }
   inflight = 0; renderHUD(); if (sel != null) renderInfo();
 }
+/* ---------- Платные удары (Telegram Stars) ---------- */
+const shopItem = id => (ST.shop || []).find(x => x.id === id);
+function shopBtn(id, cell, label) {
+  const it = shopItem(id); if (!it) return '';
+  return `<button class="small star" data-buy="${id}" data-cell="${cell == null ? '' : cell}">${label} · ${it.stars}⭐</button>`;
+}
+function bindShop(root) {
+  root.querySelectorAll('[data-buy]').forEach(b => b.onclick = () => {
+    const id = b.dataset.buy, cell = b.dataset.cell === '' ? null : Number(b.dataset.cell), it = shopItem(id);
+    const target = cell == null ? '' : ' по «' + cellName(cellById[cell]) + '»';
+    askConfirm(it.title + ' — ' + it.stars + ' ⭐', it.desc + (target ? ' Цель:' + target + '.' : ''), () => buy(id, cell));
+  });
+}
+async function buy(item, cell) {
+  if (!tg || !tg.openInvoice) { toast('Оплата звёздами работает только в приложении Telegram'); return; }
+  let r;
+  try { r = await api('/api/buy', cell == null ? { item } : { item, cell }); }
+  catch (e) { toast(e.message); return; }
+  tg.openInvoice(r.link, async status => {
+    if (status === 'paid') {
+      toast('Оплачено! Наносим удар…');
+      for (let i = 0; i < 20; i++) {
+        await sleep(700);
+        let o; try { o = await api('/api/order', { order: r.order }); } catch (e) { continue; }
+        if (o.status === 'new') continue;
+        if (o.status === 'done') await animPaid(o.item, o.cell, o.state);
+        if (o.state) { skipFx.add(o.cell); animForeignChanges(o.state.cells); ST = o.state; renderAll(); }
+        toast(o.status === 'done' ? o.msg : 'Удар не применён — звёзды вернутся: ' + o.msg);
+        return;
+      }
+      toast('Оплата прошла, удар применится в течение минуты');
+    } else if (status === 'failed') toast('Оплата не прошла');
+  });
+}
+async function animPaid(item, cell, state) {
+  if (item === 'reinf') {
+    const home = state && state.team ? state.team.id : null;
+    const target = home != null && state.cells.find(c => c.id === home && c.owner === home) ? home
+      : (state.cells.find(c => c.owner === myTeam()) || {}).id;
+    if (target != null) animDefend(target, { w: 0, c: 0, t: 5 });
+    banner('🪖 ПОДКРЕПЛЕНИЕ +500', '#2ecc71'); haptN('success');
+    return;
+  }
+  const c = pt(cell), h = hexPx(), size = Math.max(28, Math.min(56, h / 1.8));
+  const icon = item === 'missile' ? '🚀' : '💣';
+  const bomb = sprite(icon, c.x, c.y, size);
+  const rot = item === 'missile' ? 'rotate(135deg)' : 'rotate(0deg)';
+  await new Promise(res => bomb.animate([
+    { transform: tr(c.x + h * .8, c.y - 400, size, rot + ' scale(.6)'), opacity: 1 },
+    { transform: tr(c.x, c.y, size, rot + ' scale(1.1)'), opacity: 1 }
+  ], { duration: item === 'missile' ? 650 : 900, easing: 'cubic-bezier(.5,0,1,1)', fill: 'forwards' }).onfinish = res);
+  bomb.remove();
+  try { $('map').animate([{ transform: 'translate(0,0)' }, { transform: 'translate(-6px,4px)' }, { transform: 'translate(5px,-4px)' },
+                          { transform: 'translate(-3px,2px)' }, { transform: 'translate(0,0)' }], { duration: 400 }); } catch (e) {}
+  flashCell(cell); ring(cell, '#ff9f1a'); setTimeout(() => ring(cell, '#ff3b30'), 120);
+  if (item === 'missile') setTimeout(() => ring(cell, '#ffffff'), 260);
+  const n = item === 'missile' ? 16 : 10;
+  for (let i = 0; i < n; i++) {
+    const ang = Math.PI * 2 * i / n, d = h * (item === 'missile' ? .8 : .55) * (.6 + Math.random() * .6);
+    const e = sprite(['🔥', '💥', '💨'][i % 3], c.x, c.y, size * .55);
+    e.animate([{ transform: tr(c.x, c.y, size * .55, 'scale(.4)'), opacity: 1 },
+               { transform: tr(c.x + Math.cos(ang) * d, c.y + Math.sin(ang) * d, size * .55, 'scale(1.2)'), opacity: 0 }],
+              { duration: 800, easing: 'ease-out' }).onfinish = () => e.remove();
+  }
+  banner(item === 'missile' ? '☢️ РАКЕТНЫЙ УДАР!' : '💣 АВИАУДАР!', '#ff9f1a'); haptN('success');
+  await sleep(300);
+}
+
 let busy = false;
 async function act(path, body) {
   if (busy) return; busy = true;
