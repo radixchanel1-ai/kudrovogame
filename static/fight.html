@@ -185,9 +185,9 @@ const KINDS=['blot','blink','stomp','plane','laser','pounce','bolt','bomb'];
 // Бот видит то же, что игрок, и «нажимает» те же кнопки. Уровни отличаются скоростью реакции,
 // частотой решений, числом ошибок и напором.
 const LEVELS=[
-  {name:'лёгкий',note:'для разминки',react:.3,think:.3,miss:.5,aggro:.24,guard:.12},
-  {name:'умный',note:'блокирует и наказывает',react:.12,think:.13,miss:.27,aggro:.42,guard:.28},
-  {name:'босс',note:'ошибается редко',react:.09,think:.09,miss:.17,aggro:.5,guard:.35},
+  {name:'лёгкий',note:'для разминки',react:.36,think:.36,miss:.58,aggro:.2,guard:.1},
+  {name:'умный',note:'блокирует и наказывает',react:.16,think:.17,miss:.36,aggro:.36,guard:.24},
+  {name:'босс',note:'ошибается редко',react:.12,think:.12,miss:.25,aggro:.44,guard:.3},
 ];
 let vsBot=false, botLv=1, unlocked=false, lastSetup=null;
 try{
