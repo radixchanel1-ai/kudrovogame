@@ -67,6 +67,8 @@ h1{margin:0;font:clamp(30px,13vmin,64px)/1.05 var(--display);color:var(--blue);t
   color:var(--red);font:1.6em var(--display);cursor:pointer}
 .row{display:flex;flex-wrap:wrap;justify-content:center;gap:.4em 1.4em}
 .vsbot .pad[data-p="1"]{visibility:hidden}
+.go small{display:block;font:.45em/1.2 var(--text);color:var(--pencil)}
+.go.picked{box-shadow:4px 4px 0 currentColor}
 .go:hover{background:var(--hatch),var(--paper)}
 .go:active{transform:scale(.95)}
 .quiet{border:0;background:none;color:var(--pencil);font:inherit;text-decoration:underline dotted;cursor:pointer}
@@ -92,12 +94,13 @@ h1{margin:0;font:clamp(30px,13vmin,64px)/1.05 var(--display);color:var(--blue);t
       <span>Синий: A D ходить · W прыжок · S блок<br>F удар · G нога · T клякса</span>
       <span>Красный: ← → ходить · ↑ прыжок · ↓ блок<br>K удар · L нога · O клякса</span>
     </div>
-    <div class="row">
+    <div class="row" id="mMain">
       <button id="mFriend" class="go" autofocus>Вдвоём</button>
       <button id="mBot" class="go">Против бота</button>
     </div>
+    <div class="row" id="mLevels" hidden></div>
     <div class="row">
-      <button id="mLevel" class="quiet">Бот: умный</button>
+      <button id="mBack" class="quiet" hidden>← Назад</button>
       <button id="mSound" class="quiet">Звук: выкл</button>
     </div>
   </div>
@@ -119,9 +122,9 @@ const SPEED=190, JUMP=520, GRAV=1500, TALL=112;
 // Бот видит то же, что игрок, и «нажимает» те же кнопки. Уровни отличаются скоростью реакции,
 // частотой решений, числом ошибок и напором.
 const LEVELS=[
-  {name:'лёгкий',react:.25,think:.24,miss:.4,aggro:.3,guard:.15},
-  {name:'умный',react:.08,think:.09,miss:.12,aggro:.5,guard:.35},
-  {name:'босс',react:.03,think:.05,miss:.04,aggro:.6,guard:.45},
+  {name:'лёгкий',note:'для разминки',react:.25,think:.24,miss:.4,aggro:.3,guard:.15},
+  {name:'умный',note:'блокирует и наказывает',react:.08,think:.09,miss:.12,aggro:.5,guard:.35},
+  {name:'босс',note:'почти не ошибается',react:.03,think:.05,miss:.04,aggro:.6,guard:.45},
 ];
 let vsBot=false, botLv=1;
 try{const v=localStorage.getItem('botLv'); if(v!==null&&LEVELS[+v]) botLv=+v;}catch{}
@@ -245,13 +248,22 @@ function nextRound(){
   $('#mTitle').style.color=INK[w];
   const next=vsBot&&w===0&&LEVELS[botLv+1];
   $('#mText').textContent=`Счёт ${G.wins[w]}:${G.wins[1-w]}. ${DATIVE[1-w]} двойка в дневник и право на реванш.`+(next?` Теперь попробуй бота «${next.name}».`:'');
-  menu.hidden=false;
+  menu.hidden=false; showPick(vsBot);   // после матча с ботом сразу выбор уровня: реванш или посложнее
 }
 $('#mFriend').onclick=()=>startMatch(false);
-$('#mBot').onclick=()=>startMatch(true);
-const showLevel=()=>$('#mLevel').textContent='Бот: '+LEVELS[botLv].name;
-$('#mLevel').onclick=()=>{botLv=(botLv+1)%LEVELS.length; showLevel(); try{localStorage.setItem('botLv',botLv)}catch{}};
-showLevel();
+const levelBtns=LEVELS.map((L,i)=>{
+  const b=document.createElement('button'); b.className='go';
+  b.innerHTML=`${L.name[0].toUpperCase()+L.name.slice(1)}<small>${L.note}</small>`;
+  b.onclick=()=>{botLv=i; try{localStorage.setItem('botLv',i)}catch{} startMatch(true);};
+  $('#mLevels').append(b); return b;
+});
+function showPick(on){
+  $('#mMain').hidden=on; $('#mLevels').hidden=$('#mBack').hidden=!on;
+  levelBtns.forEach((b,i)=>b.classList.toggle('picked',i===botLv));
+  (on?levelBtns[botLv]:$('#mBot')).focus();
+}
+$('#mBot').onclick=()=>showPick(true);
+$('#mBack').onclick=()=>showPick(false);
 
 // ---------- бойцы ----------
 function setState(f,s){f.state=s; f.t=0; f.done=false;}
