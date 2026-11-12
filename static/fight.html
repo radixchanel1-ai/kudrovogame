@@ -1,0 +1,477 @@
+<!doctype html>
+<html lang="ru">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no">
+<title>Драка на полях</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Neucha&family=Pangolin&display=swap">
+<style>
+/* Раскладка: один экран — лист тетради в клетку. Сверху арена (canvas), снизу полоса кнопок: синий слева, красный справа. */
+:root{
+  --paper:#f4f6f1; --veil:#f4f6f1dd; --grid:#c9d8ea; --margin:#e7a3ad;
+  --blue:#2038a8; --red:#cc2936; --pencil:#6b6e76;
+  --display:'Neucha','Pangolin','Comic Sans MS',cursive;
+  --text:'Pangolin','Neucha','Comic Sans MS',cursive;
+  --cell:22px; --stroke:2.5px;
+  --wobble:255px 18px 225px 18px/18px 225px 18px 255px;
+  --hatch:repeating-linear-gradient(-45deg,currentColor 0 2px,transparent 2px 7px);
+  color-scheme:light;
+}
+*{box-sizing:border-box}
+[hidden]{display:none!important}
+html,body{height:100%;margin:0}
+body,#cover{background:
+  linear-gradient(var(--grid) 1px,transparent 1px) 0 0/var(--cell) var(--cell),
+  linear-gradient(90deg,var(--grid) 1px,transparent 1px) 0 0/var(--cell) var(--cell),
+  var(--paper)}
+body{color:var(--pencil);font-family:var(--text);overflow:hidden;overscroll-behavior:none;
+  -webkit-user-select:none;user-select:none;-webkit-touch-callout:none}
+#app{position:relative;height:100%;overflow:hidden;
+  padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
+#stage{position:absolute;top:0;transform-origin:0 0;display:flex;flex-direction:column;touch-action:none;isolation:isolate}
+/* красные поля, как в настоящей тетради */
+#stage::before{content:"";position:absolute;z-index:-1;top:0;bottom:0;right:9%;width:2px;background:var(--margin)}
+.arena{flex:1;min-height:0;position:relative}
+canvas{position:absolute;inset:0;width:100%;height:100%;display:block}
+
+.pads{flex:none;display:flex;justify-content:space-between;align-items:center;padding-block:4px 8px}
+.pad{display:grid;gap:calc(var(--b)*.12);
+  grid-template:"u u . p k" var(--b) "l r . b s" var(--b)/var(--b) var(--b) calc(var(--b)*.2) var(--b) var(--b)}
+.pad[data-p="0"]{color:var(--blue)}
+.pad[data-p="1"]{color:var(--red)}
+.btn{position:relative;display:grid;place-items:center;padding:0;border:var(--stroke) solid currentColor;
+  border-radius:var(--wobble);background:var(--veil);color:inherit;font:calc(var(--b)*.28)/1 var(--display);
+  text-shadow:0 0 3px var(--paper),0 0 3px var(--paper);touch-action:none;transition:transform .08s}
+.btn:nth-child(even){border-radius:18px 225px 18px 255px/255px 18px 225px 18px}
+.btn svg{width:46%;fill:none;stroke:currentColor;stroke-width:3;stroke-linecap:round;stroke-linejoin:round}
+.btn kbd{display:none;position:absolute;top:3px;right:7px;font:.62em var(--text);color:var(--pencil)}
+.btn.on{transform:scale(.92) rotate(-2deg);background:var(--hatch),var(--veil)}
+.btn.super{border-style:dashed;color:var(--pencil)}
+.btn.super.ready{border-style:solid;color:inherit;animation:pulse .5s steps(2) infinite}
+@keyframes pulse{50%{transform:scale(1.08) rotate(2deg)}}
+#pause{width:calc(var(--b)*.62);height:calc(var(--b)*.62);border:2px solid;border-radius:var(--wobble);
+  background:var(--veil);color:var(--pencil);font:calc(var(--b)*.3)/1 var(--display);padding:0}
+
+.sheet{position:absolute;inset:0;z-index:2;display:grid;place-content:center;justify-items:center;gap:.6em;
+  padding:12px 16px;background:var(--veil);text-align:center;font-size:clamp(13px,4.2vmin,19px);overflow:auto}
+h1{margin:0;font:clamp(30px,13vmin,64px)/1.05 var(--display);color:var(--blue);transform:rotate(-2deg);
+  text-decoration:underline wavy var(--red) 2px;text-underline-offset:.14em;text-wrap:balance}
+.grade{display:inline-grid;place-items:center;width:1.3em;height:1.3em;margin-left:.25em;
+  border:3px solid var(--red);border-radius:50%;color:var(--red);transform:rotate(9deg)}
+.sheet p{margin:0;max-width:34em}
+.keys{display:none;grid-template-columns:auto auto;gap:.1em 1.6em;text-align:left;font-size:.86em}
+.keys :first-child{color:var(--blue)}
+.keys :last-child{color:var(--red)}
+.go{padding:.2em 1.1em;border:var(--stroke) solid;border-radius:var(--wobble);background:var(--paper);
+  color:var(--red);font:1.6em var(--display);cursor:pointer}
+.go:hover{background:var(--hatch),var(--paper)}
+.go:active{transform:scale(.95)}
+.quiet{border:0;background:none;color:var(--pencil);font:inherit;text-decoration:underline dotted;cursor:pointer}
+:focus-visible{outline:2px dashed var(--pencil);outline-offset:3px}
+#cover{cursor:pointer;color:var(--blue);font-family:var(--display)}
+#cover b{font-size:2em;font-weight:400}
+#cover small{color:var(--pencil);font-family:var(--text)}
+@media (hover:hover) and (pointer:fine){.btn kbd{display:block}.keys{display:grid}}
+@media (prefers-reduced-motion:reduce){.btn.super.ready{animation:none}}
+</style>
+
+<div id="app"><div id="stage">
+  <div class="arena"><canvas id="cv"></canvas></div>
+  <div class="pads">
+    <div class="pad" data-p="0"></div>
+    <button id="pause" tabindex="-1" aria-label="Пауза">II</button>
+    <div class="pad" data-p="1"></div>
+  </div>
+  <div id="menu" class="sheet">
+    <h1 id="mTitle">Драка на полях</h1>
+    <p id="mText">Двое на одном экране: синий жмёт слева, красный справа. Бей, ставь блок, копи чернила на кляксу. Кто первым возьмёт два раунда, тот и победил.</p>
+    <div class="keys">
+      <span>Синий: A D ходить · W прыжок · S блок<br>F удар · G нога · T клякса</span>
+      <span>Красный: ← → ходить · ↑ прыжок · ↓ блок<br>K удар · L нога · O клякса</span>
+    </div>
+    <button id="mGo" class="go" autofocus>В бой!</button>
+    <button id="mSound" class="quiet">Звук: выкл</button>
+  </div>
+  <div id="cover" class="sheet" hidden>
+    <span id="cDate"></span>
+    <b>Классная работа</b>
+    <small>Пауза. Нажми в любом месте, чтобы вернуться в бой.</small>
+  </div>
+</div></div>
+
+<script>
+const $=s=>document.querySelector(s), clamp=(v,a,b)=>Math.max(a,Math.min(b,v)), pick=a=>a[Math.random()*a.length|0];
+const rootCss=getComputedStyle(document.documentElement);
+const THEME=Object.fromEntries(['paper','blue','red','pencil'].map(k=>[k,rootCss.getPropertyValue('--'+k).trim()]));
+const FONT="Neucha, Pangolin, 'Comic Sans MS', cursive";
+const INK=[THEME.blue,THEME.red], NAME=['Синий','Красный'], DATIVE=['Синему','Красному'];
+const SPEED=190, JUMP=520, GRAV=1500, TALL=112;
+
+// Удары: замах, активная фаза, откат (сек), урон, дальность, высота удара, отброс, оглушение, прирост чернил
+const ATK={
+  punch:{wind:.07,act:.09,rec:.13,dmg:6,reach:70,h:-80,push:150,stun:.22,gain:14,words:['ТЫЦ','БАЦ','ШЛЁП']},
+  kick:{wind:.16,act:.1,rec:.24,dmg:12,reach:86,h:-50,push:270,stun:.38,gain:22,words:['ХРЯСЬ','БУМ','ДЫЩ']},
+  cast:{wind:.2,act:.05,rec:.3},
+};
+const BLOT={dmg:18,h:-55,push:300,stun:.45,gain:0,words:['ШМЯК','ПЛЮХ']};
+
+// Поза — точки относительно стоп, боец смотрит вправо:
+// голова, шея, таз, локоть П/З, кисть П/З, колено П/З, стопа П/З (П — передняя, З — задняя)
+const pose=s=>s.split(' ').map(p=>p.split(',').map(Number));
+const POSES={
+  idle: pose('4,-98 2,-86 0,-48 14,-68 -8,-66 24,-82 8,-78 12,-25 -10,-24 16,0 -14,0'),
+  walkA:pose('5,-97 3,-85 0,-47 14,-68 -8,-66 24,-82 8,-78 16,-24 -14,-26 24,0 -22,0'),
+  walkB:pose('5,-99 3,-87 0,-49 14,-68 -8,-66 24,-82 8,-78 4,-26 0,-24 6,0 -4,-6'),
+  jump: pose('6,-98 3,-86 0,-50 16,-74 -12,-72 26,-90 -20,-86 14,-34 -6,-30 6,-14 -16,-12'),
+  punch:pose('14,-95 9,-84 2,-47 34,-80 -4,-66 60,-80 6,-76 16,-25 -12,-24 22,0 -18,0'),
+  kick: pose('-14,-94 -9,-83 0,-50 6,-66 -18,-64 12,-78 -24,-74 36,-50 -6,-26 74,-52 -8,0'),
+  cast: pose('10,-96 6,-85 1,-47 30,-76 -14,-72 54,-72 -22,-88 16,-25 -12,-24 22,0 -18,0'),
+  block:pose('2,-90 1,-79 0,-44 16,-62 12,-58 18,-86 14,-76 14,-24 -10,-22 18,0 -14,0'),
+  hit:  pose('-14,-92 -8,-81 0,-46 -14,-62 -22,-60 -6,-50 -30,-48 10,-24 -12,-24 14,0 -18,0'),
+  ko:   pose('-52,-9 -40,-8 -4,-6 -30,-2 -22,-18 -18,-2 -10,-22 18,-12 20,-3 38,0 42,-4'),
+  win:  pose('2,-102 1,-90 0,-50 16,-104 -14,-104 22,-124 -20,-124 10,-26 -10,-26 14,0 -14,0'),
+};
+
+// действие: подпись, клавиша синего, клавиша красного
+const ACTIONS={u:['↑','KeyW','ArrowUp'],l:['←','KeyA','ArrowLeft'],r:['→','KeyD','ArrowRight'],
+  p:['Удар','KeyF','KeyK'],k:['Нога','KeyG','KeyL'],b:['Блок','KeyS','ArrowDown'],s:['Клякса','KeyT','KeyO']};
+const ARROWS={'↑':'M5 14 L12 6 L19 14','←':'M14 5 L6 12 L14 19','→':'M10 5 L18 12 L10 19'};
+const keyLabel=c=>({ArrowUp:'↑',ArrowLeft:'←',ArrowRight:'→',ArrowDown:'↓'})[c]??c.slice(3);
+
+const app=$('#app'), stage=$('#stage'), arena=$('.arena'), cv=$('#cv'), ctx=cv.getContext('2d');
+const menu=$('#menu'), cover=$('#cover');
+let S=1, W=800, H=225, GY=210, dpr=1;
+
+const G={mode:'menu',round:1,time:60,wins:[0,0],winner:-1,t:0,clock:0,stop:0,slow:0,shake:0,cheer:0,paused:false,banner:null};
+const mkFighter=i=>({i,x:0,y:0,vx:0,vy:0,kb:0,face:i?-1:1,hp:100,hpShow:100,energy:0,state:'idle',t:0,done:false,
+  stun:0,moving:false,keys:{},buf:{},pose:POSES.idle.map(p=>[...p])});
+const F=[mkFighter(0),mkFighter(1)];
+let blots=[], drops=[], words=[];
+
+// ---------- управление ----------
+const KEYMAP={}, BTN=[{},{}];
+document.querySelectorAll('.pad').forEach((pad,p)=>{
+  for(const [a,[label,...codes]] of Object.entries(ACTIONS)){
+    const b=document.createElement('button');
+    b.className='btn'+(a==='s'?' super':''); b.style.gridArea=a; b.tabIndex=-1;
+    b.setAttribute('aria-label',`${NAME[p]}: ${({u:'прыжок',l:'влево',r:'вправо'})[a]??label}`);
+    b.innerHTML=(ARROWS[label]?`<svg viewBox="0 0 24 24"><path d="${ARROWS[label]}"/></svg>`:label)+`<kbd>${keyLabel(codes[p])}</kbd>`;
+    b.onpointerdown=e=>{e.preventDefault();b.setPointerCapture(e.pointerId);press(p,a,true);};
+    b.onpointerup=b.onpointercancel=()=>press(p,a,false);
+    pad.append(b); BTN[p][a]=b; KEYMAP[codes[p]]=[p,a];
+  }
+});
+function press(p,a,down){
+  F[p].keys[a]=down; if(down) F[p].buf[a]=.15;   // нажатие «помнится» 0.15 с, чтобы удар не терялся
+  BTN[p][a].classList.toggle('on',down);
+}
+const releaseAll=()=>[0,1].forEach(p=>Object.keys(ACTIONS).forEach(a=>press(p,a,false)));
+addEventListener('keydown',e=>{
+  if(e.code==='Escape'||e.code==='KeyP') return togglePause();
+  const m=KEYMAP[e.code]; if(!m||G.mode==='menu') return;
+  e.preventDefault(); if(!e.repeat) press(...m,true);
+});
+addEventListener('keyup',e=>{const m=KEYMAP[e.code]; if(m) press(...m,false);});
+$('.pads').addEventListener('touchstart',e=>e.preventDefault(),{passive:false});
+stage.addEventListener('contextmenu',e=>e.preventDefault());
+
+function togglePause(on=!G.paused){
+  if(G.mode==='menu') return;
+  G.paused=on; cover.hidden=!on; releaseAll();
+}
+$('#pause').onpointerdown=()=>togglePause(true);
+cover.onclick=()=>togglePause(false);
+document.addEventListener('visibilitychange',()=>document.hidden&&togglePause(true));
+$('#cDate').textContent=new Date().toLocaleDateString('ru-RU',{day:'numeric',month:'long'});
+
+// ---------- звук (по умолчанию выключен: урок же) ----------
+let ac=null, soundOn=false;
+function beep(freq,dur,type='square'){
+  if(!soundOn) return;
+  ac??=new AudioContext();
+  const o=ac.createOscillator(), g=ac.createGain(), t=ac.currentTime;
+  o.type=type; o.frequency.setValueAtTime(freq,t); o.frequency.exponentialRampToValueAtTime(freq/3,t+dur);
+  g.gain.setValueAtTime(.15,t); g.gain.exponentialRampToValueAtTime(.001,t+dur);
+  o.connect(g).connect(ac.destination); o.start(); o.stop(t+dur);
+}
+$('#mSound').onclick=e=>{soundOn=!soundOn; e.target.textContent='Звук: '+(soundOn?'вкл':'выкл'); beep(300,.1);};
+
+// ---------- ход матча ----------
+const say=(text,color)=>G.banner={text,color,t:0};
+function startMatch(){
+  G.round=1; G.wins=[0,0]; F.forEach(f=>f.energy=0);
+  menu.hidden=true; startRound();
+}
+function startRound(){
+  F.forEach((f,i)=>Object.assign(f,{x:W*(i?.7:.3),y:0,vx:0,vy:0,kb:0,face:i?-1:1,hp:100,hpShow:100,state:'idle',t:0,buf:{}}));
+  blots=[]; G.mode='intro'; G.t=0; G.time=60; G.winner=-1;
+  say('Раунд '+G.round,THEME.pencil);
+}
+function endRound(w,text){
+  if(G.mode!=='fight') return;
+  G.mode='over'; G.t=0; G.winner=w;
+  if(w>=0) G.wins[w]++;
+  say(w<0?'Ничья!':text,THEME.red);
+}
+function nextRound(){
+  const w=G.winner;
+  if(w<0||G.wins[w]<2){G.round++; return startRound();}
+  G.mode='menu'; releaseAll();
+  $('#mTitle').innerHTML=`${NAME[w]} победил!<span class="grade">5</span>`;
+  $('#mTitle').style.color=INK[w];
+  $('#mText').textContent=`Счёт ${G.wins[w]}:${G.wins[1-w]}. ${DATIVE[1-w]} двойка в дневник и право на реванш.`;
+  $('#mGo').textContent='Реванш';
+  menu.hidden=false;
+}
+$('#mGo').onclick=startMatch;
+
+// ---------- бойцы ----------
+function setState(f,s){f.state=s; f.t=0; f.done=false;}
+const inBody=(y,o)=>y<o.y+6&&y>o.y-TALL;
+
+function strike(f,o,a){
+  const dx=(o.x-f.x)*f.face;
+  if(dx>-12&&dx<a.reach&&inBody(f.y+a.h,o)) hit(o,f.face,a);
+}
+function hit(v,dir,a){
+  if(v.state==='ko'||G.mode!=='fight') return;
+  const att=F[1-v.i], blocked=v.state==='block'&&v.face===-dir, heavy=a.dmg>8;
+  const hx=v.x-dir*14, hy=GY+v.y+a.h;
+  v.hp=Math.max(0,v.hp-(blocked?Math.ceil(a.dmg*.15):a.dmg));
+  v.kb=dir*a.push*(blocked?.4:1);
+  if(blocked){word('Блок',hx,hy,THEME.pencil); G.stop=.03; beep(180,.05);}
+  else{
+    v.vx=0; v.stun=a.stun; setState(v,'hit');
+    v.energy=Math.min(100,v.energy+8); att.energy=Math.min(100,att.energy+a.gain);
+    G.stop=heavy?.09:.05; G.shake=heavy?9:5; G.cheer=1;
+    word(pick(a.words)+'!',hx,hy-22,INK[att.i]); splash(hx,hy,dir,INK[v.i],a.dmg);
+    beep(heavy?90:140,.12,'sawtooth');
+  }
+  if(v.hp<=0){
+    setState(v,'ko'); v.vy=-320; v.kb=dir*380; G.slow=.9; G.shake=14;
+    endRound(att.i,'Нокаут!');
+  }
+}
+function updateFighter(f,o,dt,live){
+  f.t+=dt;
+  for(const a in f.buf) f.buf[a]-=dt;
+  const k=live?f.keys:{}, want=a=>live&&f.buf[a]>0&&!(f.buf[a]=0);
+  const ground=f.y>=0, a=ATK[f.state];
+  if(a){
+    if(!f.done&&f.t>=a.wind){
+      f.done=true;
+      if(f.state==='cast'){blots.push({x:f.x+f.face*50,y:f.y-58,dir:f.face,i:f.i}); beep(520,.2,'triangle');}
+      else strike(f,o,a);
+    }
+    if(f.t>=a.wind+a.act+a.rec) setState(f,'idle');
+  }
+  else if(f.state==='hit'){if(f.t>=f.stun) setState(f,'idle');}
+  else if(f.state==='block'){if(!k.b) setState(f,'idle');}
+
+  if(f.state==='idle'||f.state==='block') f.face=o.x>=f.x?1:-1;
+  if(f.state==='idle'){
+    const dir=(k.r?1:0)-(k.l?1:0);
+    f.vx=dir*SPEED; f.moving=dir!==0;
+    if(want('s')&&f.energy>=100){f.energy=0; setState(f,'cast');}
+    else if(want('p')) setState(f,'punch');
+    else if(want('k')) setState(f,'kick');
+    else if(ground&&want('u')) f.vy=-JUMP;
+    else if(ground&&k.b) setState(f,'block');
+  }
+  if(f.state!=='idle'&&ground) f.vx=0;
+  f.vy+=GRAV*dt; f.y+=f.vy*dt;
+  if(f.y>=0){f.y=0; f.vy=0;}
+  f.kb*=Math.exp(-7*dt);
+  f.x=clamp(f.x+(f.vx+f.kb)*dt,24,W-24);
+}
+const poseName=f=>f.state!=='idle'?f.state:f.y<0?'jump':f.moving?(Math.floor(G.clock*9)%2?'walkA':'walkB'):'idle';
+
+// ---------- эффекты ----------
+function word(text,x,y,color){words.push({text,x:clamp(x,50,W-50),y,color,t:0,rot:(Math.random()-.5)*.5});}
+function splash(x,y,dir,color,power){
+  for(let n=0;n<6+power/2;n++) drops.push({x,y,color,vx:dir*(60+Math.random()*220)+(Math.random()-.5)*120,
+    vy:-60-Math.random()*240,r:1.5+Math.random()*3,life:.5+Math.random()*.4});
+}
+
+function update(dt){
+  G.clock+=dt;
+  G.shake*=Math.exp(-12*dt); G.cheer*=Math.exp(-3*dt);
+  if(G.banner) G.banner.t+=dt;
+  if(G.stop>0){G.stop-=dt; return;}          // hit-stop: кадр замирает на ударе
+  if(G.slow>0){G.slow-=dt; dt*=.3;}          // замедление на нокауте
+  G.t+=dt;
+  if(G.mode==='intro'&&G.t>1.1){G.mode='fight'; say('Бой!',THEME.red);}
+  const live=G.mode==='fight';
+  if(live){
+    G.time-=dt;
+    if(G.time<=0) endRound(F[0].hp===F[1].hp?-1:+(F[1].hp>F[0].hp),'Время!');
+  }
+  if(G.mode==='over'){
+    const w=F[G.winner];
+    if(w&&G.t>.8&&w.state==='idle'&&w.y>=0) setState(w,'win');
+    if(G.t>2.6) nextRound();
+  }
+  F.forEach((f,i)=>updateFighter(f,F[1-i],dt,live));
+
+  // бойцы не проходят друг сквозь друга, но перепрыгнуть можно
+  const [A,B]=F, d=B.x-A.x, gap=34-Math.abs(d);
+  if(gap>0&&Math.abs(A.y-B.y)<60&&A.state!=='ko'&&B.state!=='ko'){
+    const push=gap/2*(d>=0?1:-1);
+    A.x=clamp(A.x-push,24,W-24); B.x=clamp(B.x+push,24,W-24);
+  }
+
+  blots=blots.filter(b=>{
+    b.x+=b.dir*430*dt;
+    const o=F[1-b.i];
+    if(Math.random()<.4) drops.push({x:b.x,y:GY+b.y,color:INK[b.i],vx:-b.dir*40,vy:-20,r:1.5+Math.random()*2,life:.3});
+    if(Math.abs(b.x-o.x)<20&&inBody(b.y,o)&&o.state!=='ko'){hit(o,b.dir,BLOT); splash(b.x,GY+b.y,b.dir,INK[b.i],20); return false;}
+    return b.x>-30&&b.x<W+30;
+  });
+  drops=drops.filter(p=>{p.vy+=900*dt; p.x+=p.vx*dt; p.y+=p.vy*dt; return (p.life-=dt)>0&&p.y<GY+2;});
+  words=words.filter(w=>(w.t+=dt)<.65);
+
+  const ease=Math.min(1,dt*22);
+  F.forEach((f,i)=>{
+    const target=POSES[poseName(f)];
+    f.pose.forEach((p,j)=>{p[0]+=(target[j][0]-p[0])*ease; p[1]+=(target[j][1]-p[1])*ease;});
+    f.hpShow+=(f.hp-f.hpShow)*Math.min(1,dt*4);
+    BTN[i].s.classList.toggle('ready',f.energy>=100);
+  });
+}
+
+// ---------- рисование ----------
+// «Дрожащая линия»: смещения меняются ~8 раз в секунду, как в покадровой анимации от руки
+let seed=0, boil=0;
+const jit=amp=>{const v=Math.sin(++seed*91.7+boil*47.3)*43758.5; return (v-Math.floor(v)-.5)*2*amp;};
+const backOut=t=>1+2.7*(t-1)**3+1.7*(t-1)**2;
+const line=(...pts)=>{ctx.beginPath(); pts.forEach((p,i)=>i?ctx.lineTo(...p):ctx.moveTo(...p)); ctx.stroke();};
+function wobblyRect(x,y,w,h){
+  const c=[[x,y],[x+w,y],[x+w,y+h],[x,y+h]].map(([a,b])=>[a+jit(1),b+jit(1)]);
+  line(...c,c[0]);
+}
+function hatch(x0,y,w,h,clipX,clipW,color){
+  if(clipW<=0) return;
+  ctx.save(); ctx.beginPath(); ctx.rect(clipX,y,clipW,h); ctx.clip();
+  ctx.beginPath();
+  for(let i=-h;i<w;i+=5){ctx.moveTo(x0+i,y+h); ctx.lineTo(x0+i+h,y);}
+  ctx.strokeStyle=color; ctx.lineWidth=1.7; ctx.stroke(); ctx.restore();
+}
+
+function drawBackdrop(){
+  ctx.globalAlpha=.42; ctx.fillStyle=ctx.strokeStyle=THEME.pencil; ctx.lineWidth=1.5;
+  ctx.font=`15px ${FONT}`; ctx.textAlign='left';
+  ctx.fillText('д/з: № 214, 217',W*.08,H*.36);
+  ctx.fillText('2x + 5 = 17',W*.7,H*.42);
+  // зрители-каракули подпрыгивают, когда кто-то пропускает удар
+  const n=Math.floor(W/70);
+  for(let i=0;i<n;i++){
+    const x=(i+.5)*W/n+jit(1), hop=Math.abs(Math.sin(G.clock*14+i*2))*9*G.cheer, y=GY-hop;
+    const arm=G.cheer>.25?-9:5;
+    ctx.beginPath(); ctx.arc(x,y-24,5,0,7); ctx.stroke();
+    line([x,y-19],[x,y-7]); line([x-6,y],[x,y-7],[x+6,y]); line([x-7,y-14+arm],[x,y-16],[x+7,y-14+arm]);
+  }
+  ctx.globalAlpha=1; ctx.lineWidth=2;
+  const ground=[]; for(let x=0;x<=W+80;x+=80) ground.push([x,GY+jit(1.2)]);
+  line(...ground);
+}
+function drawHud(){
+  const bw=Math.min(300,W/2-52), by=10, bh=13, ew=bw*.6;
+  F.forEach((f,i)=>{
+    const x0=i?W/2+38:W/2-38-bw, ink=INK[i], fw=bw*f.hp/100, gw=bw*f.hpShow/100;
+    // здоровье убывает к центру экрана: остаток прижат к середине
+    ctx.globalAlpha=.3; ctx.fillStyle=ink; ctx.fillRect(i?x0+fw:x0+bw-gw,by,gw-fw,bh); ctx.globalAlpha=1;
+    hatch(x0,by,bw,bh,i?x0:x0+bw-fw,fw,ink);
+    ctx.strokeStyle=ink; ctx.lineWidth=2; wobblyRect(x0,by,bw,bh);
+    // чернила на кляксу
+    const ex=i?x0:x0+bw-ew, e=ew*f.energy/100, full=f.energy>=100;
+    ctx.fillStyle=full&&Math.floor(G.clock*6)%2?THEME.pencil:ink; ctx.fillRect(i?ex:ex+ew-e,by+bh+5,e,5);
+    ctx.strokeStyle=THEME.pencil; ctx.lineWidth=1.2; wobblyRect(ex,by+bh+5,ew,5);
+    // взятые раунды — учительские галочки
+    ctx.strokeStyle=THEME.red; ctx.lineWidth=2.2;
+    for(let n=0;n<G.wins[i];n++){
+      const cx=i?x0+bw-16-n*17:x0+2+n*17, cy=by+bh+5;
+      line([cx,cy+4],[cx+4,cy+9],[cx+13,cy-2]);
+    }
+  });
+  ctx.fillStyle=THEME.pencil; ctx.font=`30px ${FONT}`; ctx.textAlign='center';
+  ctx.fillText(Math.ceil(Math.max(0,G.time)),W/2,by+bh+11);
+}
+function drawFighter(f){
+  const ink=INK[f.i], fy=GY+f.y, breathe=f.state==='idle'?Math.sin(G.clock*5+f.i*2)*1.2:0;
+  const q=f.pose.map(([x,y],j)=>[f.x+x*f.face+jit(1.3),fy+y+(j<7?breathe:0)+jit(1.3)]);
+  const [hx,hy]=q[0], d=f.face;
+  // тень-штришок
+  ctx.strokeStyle=THEME.pencil; ctx.lineWidth=2; ctx.globalAlpha=.5;
+  const sw=18*(1-Math.min(1,-f.y/140)*.6); line([f.x-sw,GY+4],[f.x+sw,GY+4]); ctx.globalAlpha=1;
+
+  ctx.strokeStyle=ink; ctx.fillStyle=THEME.paper;
+  ctx.lineWidth=f.state==='hit'&&f.t<.1?6.5:4;
+  line(q[1],q[2]); line(q[1],q[3],q[5]); line(q[1],q[4],q[6]); line(q[2],q[7],q[9]); line(q[2],q[8],q[10]);
+  ctx.beginPath(); ctx.arc(hx,hy,11,0,7); ctx.fill(); ctx.stroke();
+  ctx.lineWidth=2.4;
+  if(f.i===0) for(const s of [-5,0,5]) line([hx+s,hy-10],[hx+s-d*3,hy-18+Math.abs(s)*.5]);   // у синего вихры
+  else{                                                                                      // у красного повязка с хвостами
+    const wave=Math.sin(G.clock*8)*3;
+    line([hx-d*9,hy-7],[hx+d*10,hy-5]);
+    line([hx-d*10,hy-6],[hx-d*24,hy-10+wave]); line([hx-d*10,hy-5],[hx-d*22,hy+1-wave]);
+  }
+  const ex=hx+d*5, ey=hy-1;
+  if(f.state==='ko'){line([ex-3,ey-3],[ex+3,ey+3]); line([ex-3,ey+3],[ex+3,ey-3]);}
+  else{ctx.fillStyle=ink; ctx.beginPath(); ctx.arc(ex,ey,1.8,0,7); ctx.fill();}
+}
+function drawEffects(){
+  for(const b of blots){
+    ctx.fillStyle=INK[b.i];
+    for(let n=0;n<6;n++){ctx.beginPath(); ctx.arc(b.x+jit(6),GY+b.y+jit(6),5+jit(2),0,7); ctx.fill();}
+  }
+  for(const p of drops){ctx.fillStyle=p.color; ctx.globalAlpha=Math.min(1,p.life*4); ctx.beginPath(); ctx.arc(p.x,p.y,p.r,0,7); ctx.fill();}
+  ctx.globalAlpha=1; ctx.textAlign='center'; ctx.lineWidth=5; ctx.strokeStyle=THEME.paper;
+  for(const w of words){
+    const s=backOut(Math.min(1,w.t/.15));
+    ctx.save(); ctx.translate(w.x,w.y-w.t*24); ctx.rotate(w.rot); ctx.scale(s,s);
+    ctx.globalAlpha=Math.min(1,(.65-w.t)*5); ctx.font=`26px ${FONT}`;
+    ctx.strokeText(w.text,0,0); ctx.fillStyle=w.color; ctx.fillText(w.text,0,0); ctx.restore();
+  }
+  const b=G.banner;
+  if(b&&b.t<1.1){
+    const s=backOut(Math.min(1,b.t/.22));
+    ctx.save(); ctx.translate(W/2,H*.56); ctx.rotate(-.05); ctx.scale(s,s);
+    ctx.font=`${Math.min(64,H*.28)}px ${FONT}`; ctx.lineWidth=9;
+    ctx.strokeText(b.text,0,0); ctx.fillStyle=b.color; ctx.fillText(b.text,0,0); ctx.restore();
+  }
+}
+function draw(now){
+  seed=0; boil=Math.floor(now/120);
+  ctx.setTransform(1,0,0,1,0,0); ctx.clearRect(0,0,cv.width,cv.height);
+  const k=S*dpr;
+  ctx.setTransform(k,0,0,k,(Math.random()-.5)*G.shake*k,(Math.random()-.5)*G.shake*k);
+  ctx.lineCap=ctx.lineJoin='round';
+  drawBackdrop(); drawHud(); F.forEach(drawFighter); drawEffects();
+}
+
+// ---------- экран ----------
+// Если телефон держат вертикально (или включён запрет поворота), сцена сама поворачивается на 90°
+function layout(){
+  const cs=getComputedStyle(app), pl=parseFloat(cs.paddingLeft);
+  const w=app.clientWidth-pl-parseFloat(cs.paddingRight), h=app.clientHeight, turn=h>w;
+  const [sw,sh]=turn?[h,w]:[w,h];
+  stage.style.cssText=`left:${turn?pl+w:pl}px;width:${sw}px;height:${sh}px;transform:${turn?'rotate(90deg)':'none'};--b:${Math.min(68,sh*.17,sw*.1)}px`;
+  dpr=Math.min(2,devicePixelRatio||1);
+  const cw=arena.clientWidth, ch=arena.clientHeight;
+  cv.width=cw*dpr; cv.height=ch*dpr;
+  S=Math.min(cw/800,ch/225)||1; W=cw/S; H=ch/S; GY=H-14;
+  if(G.mode==='menu') F.forEach((f,i)=>f.x=W*(i?.7:.3));
+}
+new ResizeObserver(layout).observe(app);
+layout();
+document.fonts?.load('20px Neucha');
+
+let last=performance.now();
+function frame(now){
+  const dt=Math.min(.033,(now-last)/1000); last=now;
+  if(!G.paused) update(dt);
+  draw(now);
+  requestAnimationFrame(frame);
+}
+requestAnimationFrame(frame);
+</script>
