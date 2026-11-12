@@ -7,7 +7,9 @@
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Neucha&family=Pangolin&display=swap">
 <style>
 /* Раскладка: один экран — лист тетради в клетку. Сверху арена (canvas), снизу полоса кнопок: синий слева, красный справа. */
-:root{
+:root,[data-world="cell"]{
+  --bg:linear-gradient(var(--grid) 1px,transparent 1px) 0 0/var(--cell) var(--cell),
+    linear-gradient(90deg,var(--grid) 1px,transparent 1px) 0 0/var(--cell) var(--cell),var(--paper);
   --paper:#f4f6f1; --veil:#f4f6f1dd; --grid:#c9d8ea; --margin:#e7a3ad;
   --blue:#2038a8; --red:#cc2936; --pencil:#6b6e76; --night:#1c1e2e;
   --display:'Neucha','Pangolin','Comic Sans MS',cursive;
@@ -17,14 +19,28 @@
   --hatch:repeating-linear-gradient(-45deg,currentColor 0 2px,transparent 2px 7px);
   color-scheme:light;
 }
+/* Школьные миры: каждый переопределяет бумагу, чернила и фон */
+[data-world="line"]{--grid:#aebfe0;--margin:#e58a98;
+  --bg:repeating-linear-gradient(0deg,var(--grid) 0 1px,transparent 1px 26px),
+    repeating-linear-gradient(105deg,transparent 0 109px,var(--grid) 109px 110px),var(--paper)}
+[data-world="board"]{--paper:#23423a;--veil:#23423ae6;--grid:#2d5148;--margin:#5d7a70;
+  --blue:#a6d4ff;--red:#ffb5a3;--pencil:#dbe4dc;--night:#0a1410;
+  --bg:radial-gradient(ellipse at 25% 35%,#ffffff14,transparent 55%),
+    radial-gradient(ellipse at 75% 70%,#ffffff0d,transparent 50%),var(--paper)}
+[data-world="mm"]{--paper:#fbf6ea;--veil:#fbf6eadd;--grid:#efc39a;--margin:#e39a6a;--pencil:#6f6557;
+  --bg:linear-gradient(var(--grid) 1px,transparent 1px) 0 0/40px 40px,
+    linear-gradient(90deg,var(--grid) 1px,transparent 1px) 0 0/40px 40px,
+    linear-gradient(#efc39a66 1px,transparent 1px) 0 0/8px 8px,
+    linear-gradient(90deg,#efc39a66 1px,transparent 1px) 0 0/8px 8px,var(--paper)}
+[data-world="gym"]{--paper:#ecd8b0;--veil:#ecd8b0dd;--grid:#d4b986;--margin:#fff8e8;--pencil:#5e4b32;
+  --blue:#1b3aa6;--red:#b81f2b;
+  --bg:repeating-linear-gradient(90deg,var(--grid) 0 2px,transparent 2px 70px),
+    repeating-linear-gradient(0deg,#d4b98655 0 1px,transparent 1px 180px),var(--paper)}
 *{box-sizing:border-box}
 button{-webkit-tap-highlight-color:transparent}
 [hidden]{display:none!important}
 html,body{height:100%;margin:0}
-body,#cover{background:
-  linear-gradient(var(--grid) 1px,transparent 1px) 0 0/var(--cell) var(--cell),
-  linear-gradient(90deg,var(--grid) 1px,transparent 1px) 0 0/var(--cell) var(--cell),
-  var(--paper)}
+body,#cover{background:var(--bg)}
 body{color:var(--pencil);font-family:var(--text);overflow:hidden;overscroll-behavior:none;
   -webkit-user-select:none;user-select:none;-webkit-touch-callout:none}
 #app{position:relative;height:100%;overflow:hidden;
@@ -70,6 +86,7 @@ h2{margin:0;font:clamp(20px,7.5vmin,34px)/1 var(--display)}
 .go{padding:.2em 1.1em;border:var(--stroke) solid;border-radius:var(--wobble);background:var(--paper);
   color:var(--red);font:1.6em var(--display);cursor:pointer}
 .go small{display:block;font:.45em/1.2 var(--text);color:var(--pencil)}
+.world{background:var(--bg);color:var(--blue);border-color:var(--pencil);font-size:1.3em;padding:.3em .8em;max-width:11em}
 .go.picked{box-shadow:4px 4px 0 currentColor}
 .go:hover,.card:hover:enabled{background:var(--hatch),var(--paper)}
 .go:active,.card:active{transform:scale(.95)}
@@ -99,7 +116,7 @@ h2{margin:0;font:clamp(20px,7.5vmin,34px)/1 var(--display)}
   </div>
   <div id="menu" class="sheet">
     <h1 id="mTitle">Драка на полях</h1>
-    <p id="mText">Девять бойцов, у каждого своя суперсила. Блок + Удар — бросок через себя. Два раза вбок — рывок. Блок в последний момент — парирование. И следи за листом: на нём всякое случается.</p>
+    <p id="mText">Девять бойцов и пять школьных миров. Блок + Удар — бросок через себя. Два раза вбок — рывок. Блок в последний момент — парирование. И следи за листом: на нём всякое случается.</p>
     <div class="keys">
       <span>Синий: A D ходить · W прыжок · S блок<br>F удар · G нога · T суперсила</span>
       <span>Красный: ← → ходить · ↑ прыжок · ↓ блок<br>K удар · L нога · O суперсила</span>
@@ -118,6 +135,7 @@ h2{margin:0;font:clamp(20px,7.5vmin,34px)/1 var(--display)}
   <div id="pick" class="sheet" hidden>
     <h2 id="pTitle"></h2>
     <div id="pGrid"></div>
+    <div id="wGrid" class="row" hidden></div>
     <button id="pBack" class="quiet">← Назад</button>
   </div>
   <div id="cover" class="sheet" hidden>
@@ -148,14 +166,28 @@ const CHARS=[
   {id:'pirat',name:'Пират',tag:'бросает бомбы навесом',sp:'Бомба',speed:1,power:1.05,tough:1,jump:.95,size:1.02,kind:'bomb',range:[140,340]},
   {id:'scrib',name:'Каракуля',tag:'каждый раз новая суперсила',sp:'Хаос',secret:true,fem:true,speed:1.1,power:1.1,tough:.95,jump:1.1,size:1.05,kind:'random',range:[100,330]},
 ];
+// Миры: notes — надписи на фоне; особенность задаётся множителями jump / ev (частота событий) / gain (чернила) / dmg
+const WORLDS=[
+  {id:'cell',name:'Тетрадь в клетку',tag:'классика, без сюрпризов',notes:['д/з: № 214, 217','2x + 5 = 17']},
+  {id:'line',name:'Тетрадь в линейку',tag:'события случаются вдвое чаще',ev:.5,notes:['Жи-ши пиши с «и»','Классная работа']},
+  {id:'board',name:'Школьная доска',tag:'мел крошится: суперсила копится быстрее',gain:1.6,notes:['E = mc²','Дежурный: Петров']},
+  {id:'mm',name:'Миллиметровка',tag:'точный расчёт: удары больнее',dmg:1.25,notes:['Чертёж № 3','М 1:10']},
+  {id:'gym',name:'Спортзал',tag:'пол пружинит: прыжки выше',jump:1.3,court:true,notes:['Физра: 3 круга','Счёт 2:1']},
+];
+let world=WORLDS[0];
+function setWorld(i){
+  world=WORLDS[i]; document.documentElement.dataset.world=world.id;
+  for(const k in THEME) THEME[k]=rootCss.getPropertyValue('--'+k).trim();
+  INK[0]=THEME.blue; INK[1]=THEME.red;
+}
 const KINDS=['blot','blink','stomp','plane','laser','pounce','bolt','bomb'];
 
 // Бот видит то же, что игрок, и «нажимает» те же кнопки. Уровни отличаются скоростью реакции,
 // частотой решений, числом ошибок и напором.
 const LEVELS=[
-  {name:'лёгкий',note:'для разминки',react:.25,think:.24,miss:.4,aggro:.3,guard:.15},
-  {name:'умный',note:'блокирует и наказывает',react:.08,think:.09,miss:.12,aggro:.5,guard:.35},
-  {name:'босс',note:'почти не ошибается',react:.03,think:.05,miss:.04,aggro:.6,guard:.45},
+  {name:'лёгкий',note:'для разминки',react:.3,think:.3,miss:.5,aggro:.24,guard:.12},
+  {name:'умный',note:'блокирует и наказывает',react:.12,think:.13,miss:.27,aggro:.42,guard:.28},
+  {name:'босс',note:'ошибается редко',react:.09,think:.09,miss:.17,aggro:.5,guard:.35},
 ];
 let vsBot=false, botLv=1, unlocked=false, lastSetup=null;
 try{
@@ -284,8 +316,8 @@ const say=(text,color)=>G.banner={text,color,t:0};
 function note(text){G.note={text,t:0};}
 const JOKES=['Учитель вышел из класса','Последняя парта, потише!','Кто проиграет — моет доску','Только не по тетради!',
   'Дневники на стол','Контрольная отменяется','Звонок для учителя'];
-function startMatch(withBot,chars){
-  lastSetup=[withBot,chars];
+function startMatch(withBot,chars,wi=0){
+  lastSetup=[withBot,chars,wi]; setWorld(wi);
   vsBot=withBot; stage.classList.toggle('vsbot',vsBot);
   NAME[1]=vsBot?'Бот':'Красный'; DATIVE[1]=vsBot?'Боту':'Красному';
   G.round=1; G.wins=[0,0];
@@ -296,7 +328,7 @@ function startRound(){
   F.forEach((f,i)=>Object.assign(f,{x:W*(i?.7:.3),y:0,vx:0,vy:0,kb:0,face:i?-1:1,hp:100,hpShow:100,state:'idle',t:0,
     combo:0,comboT:0,dashCd:0,inv:0,fast:0,boost:1,spin:0,buf:{}}));
   brains.forEach(b=>b.t=.3); releaseAll();
-  shots=[]; items=[]; G.ev=null; G.evT=7+Math.random()*5;
+  shots=[]; items=[]; G.ev=null; G.evT=(7+Math.random()*5)*(world.ev||1);
   G.mode='intro'; G.t=0; G.time=60; G.winner=-1;
   say('Раунд '+G.round,THEME.pencil); note(pick(JOKES));
 }
@@ -348,7 +380,20 @@ const cards=[...CHARS,null].map((c,idx)=>{                 // последняя
 });
 let picks=[], pickBot=false;
 const available=()=>CHARS.map((c,i)=>i).filter(i=>!CHARS[i].secret||unlocked);
-function chooseChars(withBot){pickBot=withBot; picks=[]; menu.hidden=true; pickSheet.hidden=false; askPick();}
+function chooseChars(withBot){
+  pickBot=withBot; picks=[]; menu.hidden=true; pickSheet.hidden=false;
+  $('#pGrid').hidden=false; $('#wGrid').hidden=true; askPick();
+}
+[...WORLDS,null].forEach((w,i)=>{                          // последняя кнопка — случайный мир
+  const b=document.createElement('button'); b.className='go world'; b.dataset.world=w?.id??'cell';
+  b.innerHTML=`${w?w.name:'Случайный мир'}<small>${w?w.tag:'куда занесёт'}</small>`;
+  b.onclick=()=>startMatch(pickBot,picks,w?i:Math.random()*WORLDS.length|0);
+  $('#wGrid').append(b);
+});
+function askWorld(){
+  $('#pTitle').textContent='Где дерёмся?'; pickSheet.style.color=THEME.pencil;
+  $('#pGrid').hidden=true; $('#wGrid').hidden=false;
+}
 function askPick(){
   const i=picks.length;
   $('#pTitle').textContent=`${i?'Красный':'Синий'}, выбирай бойца`;
@@ -365,7 +410,7 @@ function choose(idx){
   picks.push(CHARS[idx]?idx:pick(available()));
   if(!pickBot&&picks.length<2) return askPick();
   if(pickBot) picks.push(pick(available()));
-  startMatch(pickBot,picks);
+  askWorld();
 }
 $('#pBack').onclick=()=>{pickSheet.hidden=true; menu.hidden=false;};
 
@@ -389,7 +434,7 @@ function hit(v,dir,a,att,mult=1){
     if(melee&&att){att.stun=.55; att.kb=-dir*220; att.combo=0; setState(att,'hit');}
     return;
   }
-  let dmg=a.dmg*mult*v.c.tough;
+  let dmg=a.dmg*mult*v.c.tough*(world.dmg||1);
   if(att) dmg*=att.c.power*(att.hp<=25?1.3:1);     // при здоровье ниже четверти боец в ярости бьёт сильнее
   if(blocked) dmg*=.15;
   else if(att){
@@ -403,7 +448,7 @@ function hit(v,dir,a,att,mult=1){
   else{
     v.vx=0; v.stun=a.stun; v.combo=0; setState(v,'hit');
     v.energy=Math.min(100,v.energy+8);
-    if(att) att.energy=Math.min(100,att.energy+a.gain);
+    if(att) att.energy=Math.min(100,att.energy+a.gain*(world.gain||1));
     if(a.toss){v.vy=-430; v.kb=-dir*700;}         // бросок: соперник летит через бросающего
     G.stop=heavy?.09:.05; G.shake=heavy?9:5; G.cheer=1;
     word(pick(a.words)+'!',hx,hy-22,att?INK[att.i]:THEME.pencil); splash(hx,hy,dir,INK[v.i],a.dmg);
@@ -464,7 +509,7 @@ function updateFighter(f,o,dt,live){
     if(want('s')&&f.energy>=100){f.energy=0; setState(f,'cast');}
     else if(want('p')) setState(f,k.b&&ground?'throw':'punch');
     else if(want('k')) setState(f,'kick');
-    else if(want('u')&&f.jumps>0){f.vy=-JUMP*c.jump; f.jumps--; if(!ground) puff(f.x,GY+f.y);}
+    else if(want('u')&&f.jumps>0){f.vy=-JUMP*c.jump*(world.jump||1); f.jumps--; if(!ground) puff(f.x,GY+f.y);}
     else if(ground&&k.b) setState(f,'block');
   }
   if(f.state!=='idle'&&f.y>=0&&f.vy>=0) f.vx=0;
@@ -547,7 +592,7 @@ function updateEvents(dt){
   if(G.ev&&(G.ev.t-=dt)<=0) G.ev=null;
   if((G.evT-=dt)<=0){
     const type=pick(Object.keys(EVENTS).filter(e=>e!==G.lastEv));
-    G.lastEv=type; G.evT=10+Math.random()*6; note(EVENTS[type]()); beep(880,.15,'sine');
+    G.lastEv=type; G.evT=(10+Math.random()*6)*(world.ev||1); note(EVENTS[type]()); beep(880,.15,'sine');
   }
   items=items.filter(g=>{
     g.y=Math.min(0,g.y+130*dt);
@@ -671,8 +716,12 @@ function hatch(x0,y,w,h,clipX,clipW,color){
 function drawBackdrop(){
   ctx.globalAlpha=.42; ctx.fillStyle=ctx.strokeStyle=THEME.pencil; ctx.lineWidth=1.5;
   ctx.font=`15px ${FONT}`; ctx.textAlign='left';
-  ctx.fillText('д/з: № 214, 217',W*.08,H*.42);
-  ctx.fillText('2x + 5 = 17',W*.7,H*.48);
+  ctx.fillText(world.notes[0],W*.08,H*.42);
+  ctx.fillText(world.notes[1],W*.7,H*.48);
+  if(world.court){                                 // разметка зала
+    ctx.beginPath(); ctx.ellipse(W/2,GY,90,12,0,Math.PI,2*Math.PI); ctx.stroke(); line([W/2,GY],[W/2,GY-110]);
+    line([W-40,GY-150],[W-40,GY-190],[W-10,GY-190],[W-10,GY-150],[W-40,GY-150]); line([W-44,GY-158],[W-66,GY-158]);
+  }
   // зрители-каракули подпрыгивают, когда кто-то пропускает удар
   const n=Math.floor(W/70);
   for(let i=0;i<n;i++){
