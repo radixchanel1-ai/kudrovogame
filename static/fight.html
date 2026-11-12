@@ -9,7 +9,7 @@
 /* Раскладка: один экран — лист тетради в клетку. Сверху арена (canvas), снизу полоса кнопок: синий слева, красный справа. */
 :root{
   --paper:#f4f6f1; --veil:#f4f6f1dd; --grid:#c9d8ea; --margin:#e7a3ad;
-  --blue:#2038a8; --red:#cc2936; --pencil:#6b6e76;
+  --blue:#2038a8; --red:#cc2936; --pencil:#6b6e76; --night:#1c1e2e;
   --display:'Neucha','Pangolin','Comic Sans MS',cursive;
   --text:'Pangolin','Neucha','Comic Sans MS',cursive;
   --cell:22px; --stroke:2.5px;
@@ -33,13 +33,15 @@ body{color:var(--pencil);font-family:var(--text);overflow:hidden;overscroll-beha
 /* красные поля, как в настоящей тетради */
 #stage::before{content:"";position:absolute;z-index:-1;top:0;bottom:0;right:9%;width:2px;background:var(--margin)}
 .arena{flex:1;min-height:0;position:relative}
-canvas{position:absolute;inset:0;width:100%;height:100%;display:block}
+canvas{display:block}
+#cv{position:absolute;inset:0;width:100%;height:100%}
 
 .pads{flex:none;display:flex;justify-content:space-between;align-items:center;padding-block:4px 8px}
 .pad{display:grid;gap:calc(var(--b)*.12);
   grid-template:"u u . p k" var(--b) "l r . b s" var(--b)/var(--b) var(--b) calc(var(--b)*.2) var(--b) var(--b)}
 .pad[data-p="0"]{color:var(--blue)}
 .pad[data-p="1"]{color:var(--red)}
+.vsbot .pad[data-p="1"]{visibility:hidden}
 .btn{position:relative;display:grid;place-items:center;padding:0;border:var(--stroke) solid currentColor;
   border-radius:var(--wobble);background:var(--veil);color:inherit;font:calc(var(--b)*.28)/1 var(--display);
   text-shadow:0 0 3px var(--paper),0 0 3px var(--paper);touch-action:none;transition:transform .08s}
@@ -47,32 +49,40 @@ canvas{position:absolute;inset:0;width:100%;height:100%;display:block}
 .btn svg{width:46%;fill:none;stroke:currentColor;stroke-width:3;stroke-linecap:round;stroke-linejoin:round}
 .btn kbd{display:none;position:absolute;top:3px;right:7px;font:.62em var(--text);color:var(--pencil)}
 .btn.on{transform:scale(.92) rotate(-2deg);background:var(--hatch),var(--veil)}
-.btn.super{border-style:dashed;color:var(--pencil)}
+.btn.super{border-style:dashed;color:var(--pencil);font-size:calc(var(--b)*.24)}
 .btn.super.ready{border-style:solid;color:inherit;animation:pulse .5s steps(2) infinite}
 @keyframes pulse{50%{transform:scale(1.08) rotate(2deg)}}
 #pause{width:calc(var(--b)*.62);height:calc(var(--b)*.62);border:2px solid;border-radius:var(--wobble);
   background:var(--veil);color:var(--pencil);font:calc(var(--b)*.3)/1 var(--display);padding:0}
 
-.sheet{position:absolute;inset:0;z-index:2;display:grid;place-content:center;justify-items:center;gap:.6em;
-  padding:12px 16px;background:var(--veil);text-align:center;font-size:clamp(13px,4.2vmin,19px);overflow:auto}
-h1{margin:0;font:clamp(30px,13vmin,64px)/1.05 var(--display);color:var(--blue);transform:rotate(-2deg);
+.sheet{position:absolute;inset:0;z-index:2;display:grid;place-content:center;justify-items:center;gap:.55em;
+  padding:10px 16px;background:var(--veil);text-align:center;font-size:clamp(13px,4.2vmin,19px);overflow:auto}
+h1{margin:0;font:clamp(28px,12vmin,60px)/1.05 var(--display);color:var(--blue);transform:rotate(-2deg);
   text-decoration:underline wavy var(--red) 2px;text-underline-offset:.14em;text-wrap:balance}
+h2{margin:0;font:clamp(20px,7.5vmin,34px)/1 var(--display)}
 .grade{display:inline-grid;place-items:center;width:1.3em;height:1.3em;margin-left:.25em;
   border:3px solid var(--red);border-radius:50%;color:var(--red);transform:rotate(9deg)}
-.sheet p{margin:0;max-width:34em}
-.keys{display:none;grid-template-columns:auto auto;gap:.1em 1.6em;text-align:left;font-size:.86em}
+.sheet p{margin:0;max-width:36em}
+.keys{display:none;grid-template-columns:auto auto;gap:.1em 1.6em;text-align:left;font-size:.8em}
 .keys :first-child{color:var(--blue)}
 .keys :last-child{color:var(--red)}
+.row{display:flex;flex-wrap:wrap;justify-content:center;gap:.4em 1.4em}
 .go{padding:.2em 1.1em;border:var(--stroke) solid;border-radius:var(--wobble);background:var(--paper);
   color:var(--red);font:1.6em var(--display);cursor:pointer}
-.row{display:flex;flex-wrap:wrap;justify-content:center;gap:.4em 1.4em}
-.vsbot .pad[data-p="1"]{visibility:hidden}
 .go small{display:block;font:.45em/1.2 var(--text);color:var(--pencil)}
 .go.picked{box-shadow:4px 4px 0 currentColor}
-.go:hover{background:var(--hatch),var(--paper)}
-.go:active{transform:scale(.95)}
+.go:hover,.card:hover:enabled{background:var(--hatch),var(--paper)}
+.go:active,.card:active{transform:scale(.95)}
 .quiet{border:0;background:none;color:var(--pencil);font:inherit;text-decoration:underline dotted;cursor:pointer}
 :focus-visible{outline:2px dashed var(--pencil);outline-offset:3px}
+#pGrid{display:grid;grid-template-columns:repeat(5,1fr);gap:6px;width:min(100%,660px)}
+.card{display:grid;justify-items:center;align-content:start;min-width:0;padding:2px 4px 4px;border:2px solid;
+  border-radius:var(--wobble);background:var(--paper);color:inherit;font:1.05em/1.1 var(--display);cursor:pointer;
+  text-shadow:0 0 3px var(--paper)}
+.card:nth-child(even){border-radius:18px 225px 18px 255px/255px 18px 225px 18px}
+.card canvas{height:min(62px,15vmin);aspect-ratio:54/62}
+.card small{font:.6em/1.1 var(--text);color:var(--pencil)}
+.card:disabled{opacity:.5;cursor:default}
 #cover{cursor:pointer;color:var(--blue);font-family:var(--display)}
 #cover b{font-size:2em;font-weight:400}
 #cover small{color:var(--pencil);font-family:var(--text)}
@@ -89,10 +99,10 @@ h1{margin:0;font:clamp(30px,13vmin,64px)/1.05 var(--display);color:var(--blue);t
   </div>
   <div id="menu" class="sheet">
     <h1 id="mTitle">Драка на полях</h1>
-    <p id="mText">Вдвоём на одном экране или против бота. Бей, ставь блок, копи чернила на кляксу. Кто первым возьмёт два раунда, тот и победил.</p>
+    <p id="mText">Девять бойцов, у каждого своя суперсила. Блок + Удар — бросок через себя. Два раза вбок — рывок. Блок в последний момент — парирование. И следи за листом: на нём всякое случается.</p>
     <div class="keys">
-      <span>Синий: A D ходить · W прыжок · S блок<br>F удар · G нога · T клякса</span>
-      <span>Красный: ← → ходить · ↑ прыжок · ↓ блок<br>K удар · L нога · O клякса</span>
+      <span>Синий: A D ходить · W прыжок · S блок<br>F удар · G нога · T суперсила</span>
+      <span>Красный: ← → ходить · ↑ прыжок · ↓ блок<br>K удар · L нога · O суперсила</span>
     </div>
     <div class="row" id="mMain">
       <button id="mFriend" class="go" autofocus>Вдвоём</button>
@@ -101,8 +111,14 @@ h1{margin:0;font:clamp(30px,13vmin,64px)/1.05 var(--display);color:var(--blue);t
     <div class="row" id="mLevels" hidden></div>
     <div class="row">
       <button id="mBack" class="quiet" hidden>← Назад</button>
+      <button id="mAgain" class="quiet" hidden>Реванш теми же бойцами</button>
       <button id="mSound" class="quiet">Звук: выкл</button>
     </div>
+  </div>
+  <div id="pick" class="sheet" hidden>
+    <h2 id="pTitle"></h2>
+    <div id="pGrid"></div>
+    <button id="pBack" class="quiet">← Назад</button>
   </div>
   <div id="cover" class="sheet" hidden>
     <span id="cDate"></span>
@@ -114,10 +130,25 @@ h1{margin:0;font:clamp(30px,13vmin,64px)/1.05 var(--display);color:var(--blue);t
 <script>
 const $=s=>document.querySelector(s), clamp=(v,a,b)=>Math.max(a,Math.min(b,v)), pick=a=>a[Math.random()*a.length|0];
 const rootCss=getComputedStyle(document.documentElement);
-const THEME=Object.fromEntries(['paper','blue','red','pencil'].map(k=>[k,rootCss.getPropertyValue('--'+k).trim()]));
+const THEME=Object.fromEntries(['paper','blue','red','pencil','margin','night'].map(k=>[k,rootCss.getPropertyValue('--'+k).trim()]));
 const FONT="Neucha, Pangolin, 'Comic Sans MS', cursive";
 const INK=[THEME.blue,THEME.red], NAME=['Синий','Красный'], DATIVE=['Синему','Красному'];
 const SPEED=190, JUMP=520, GRAV=1500, TALL=112;
+
+// Бойцы: speed — скорость, power — сила удара, tough — множитель получаемого урона (меньше = крепче),
+// kind — суперсила, range — на каком расстоянии бот её применяет
+const CHARS=[
+  {id:'vihr',name:'Вихрь',tag:'обычный пацан, кидает кляксы',sp:'Клякса',speed:1,power:1,tough:1,jump:1,size:1,kind:'blot',range:[170,900]},
+  {id:'ninja',name:'Ниндзя',tag:'быстрый, телепорт за спину',sp:'Тень',speed:1.25,power:.85,tough:1.1,jump:1.1,size:.95,kind:'blink',range:[70,900]},
+  {id:'bugai',name:'Бугай',tag:'медленный танк, топает волной',sp:'Топот',speed:.78,power:1.2,tough:.95,jump:.85,size:1.18,thick:1.6,kind:'stomp',range:[0,230]},
+  {id:'botan',name:'Ботаник',tag:'хилый, зато самолётики быстрые',sp:'Самолёт',speed:1.05,power:1,tough:1,jump:1,size:.95,kind:'plane',range:[150,900]},
+  {id:'robot',name:'Робот',tag:'лазер через весь лист',sp:'Лазер',speed:.9,power:1.05,tough:.95,jump:.9,size:1.05,kind:'laser',range:[120,900]},
+  {id:'cat',name:'Кот',tag:'двойной прыжок и бросок с когтями',sp:'Когти',speed:1.25,power:1.05,tough:.92,jump:1.1,size:.85,jumps:2,kind:'pounce',range:[90,230]},
+  {id:'mag',name:'Маг',tag:'молния с неба, не стой на месте',sp:'Молния',speed:1,power:1.05,tough:1,jump:1,size:1,kind:'bolt',range:[120,900]},
+  {id:'pirat',name:'Пират',tag:'бросает бомбы навесом',sp:'Бомба',speed:1,power:1.05,tough:1,jump:.95,size:1.02,kind:'bomb',range:[140,340]},
+  {id:'scrib',name:'Каракуля',tag:'каждый раз новая суперсила',sp:'Хаос',secret:true,fem:true,speed:1.1,power:1.1,tough:.95,jump:1.1,size:1.05,kind:'random',range:[100,330]},
+];
+const KINDS=['blot','blink','stomp','plane','laser','pounce','bolt','bomb'];
 
 // Бот видит то же, что игрок, и «нажимает» те же кнопки. Уровни отличаются скоростью реакции,
 // частотой решений, числом ошибок и напором.
@@ -126,17 +157,32 @@ const LEVELS=[
   {name:'умный',note:'блокирует и наказывает',react:.08,think:.09,miss:.12,aggro:.5,guard:.35},
   {name:'босс',note:'почти не ошибается',react:.03,think:.05,miss:.04,aggro:.6,guard:.45},
 ];
-let vsBot=false, botLv=1;
-try{const v=localStorage.getItem('botLv'); if(v!==null&&LEVELS[+v]) botLv=+v;}catch{}
+let vsBot=false, botLv=1, unlocked=false, lastSetup=null;
+try{
+  const v=localStorage.getItem('botLv'); if(v!==null&&LEVELS[+v]) botLv=+v;
+  unlocked=localStorage.getItem('scrib')==='1';
+}catch{}
+const save=(k,v)=>{try{localStorage.setItem(k,v)}catch{}};
 const brains=[{t:0,held:{}},{t:0,held:{}}];
 
 // Удары: замах, активная фаза, откат (сек), урон, дальность, высота удара, отброс, оглушение, прирост чернил
 const ATK={
   punch:{wind:.07,act:.09,rec:.13,dmg:6,reach:70,h:-80,push:150,stun:.22,gain:14,words:['ТЫЦ','БАЦ','ШЛЁП']},
   kick:{wind:.16,act:.1,rec:.24,dmg:12,reach:86,h:-50,push:270,stun:.38,gain:22,words:['ХРЯСЬ','БУМ','ДЫЩ']},
+  throw:{wind:.12,act:.05,rec:.3,dmg:9,reach:50,h:-60,push:0,stun:.6,gain:18,unblock:true,toss:true,words:['БРОСОК','ОПА']},
+  pounce:{wind:.2,act:.14,rec:.2,dmg:19,reach:72,h:-45,push:300,stun:.5,gain:0,words:['ЦАП','МЯУ']},
   cast:{wind:.2,act:.05,rec:.3},
 };
-const BLOT={dmg:18,h:-55,push:300,stun:.45,gain:0,words:['ШМЯК','ПЛЮХ']};
+// Попадания суперсил и событий
+const SPEC={
+  blot:{dmg:18,h:-55,push:300,stun:.45,gain:0,words:['ШМЯК','ПЛЮХ']},
+  plane:{dmg:17,h:-60,push:200,stun:.35,gain:0,words:['ВЖУХ','ТЫК']},
+  bomb:{dmg:20,h:-40,push:340,stun:.5,gain:0,words:['БАБАХ','БДЫЩ']},
+  laser:{dmg:16,h:-70,push:240,stun:.4,gain:0,words:['ПИУ','ВЖЖЖ']},
+  bolt:{dmg:22,h:-80,push:120,stun:.6,gain:0,unblock:true,words:['ТРРАХ','ШАРАХ']},
+  wave:{dmg:15,h:-10,push:260,stun:.45,gain:0,words:['ТУДУХ','БУХ']},
+  eraser:{dmg:10,h:-15,push:320,stun:.4,gain:0,unblock:true,words:['ШОРК','ВЖИК']},
+};
 
 // Поза — точки относительно стоп, боец смотрит вправо:
 // голова, шея, таз, локоть П/З, кисть П/З, колено П/З, стопа П/З (П — передняя, З — задняя)
@@ -148,12 +194,14 @@ const POSES={
   jump: pose('6,-98 3,-86 0,-50 16,-74 -12,-72 26,-90 -20,-86 14,-34 -6,-30 6,-14 -16,-12'),
   punch:pose('14,-95 9,-84 2,-47 34,-80 -4,-66 60,-80 6,-76 16,-25 -12,-24 22,0 -18,0'),
   kick: pose('-14,-94 -9,-83 0,-50 6,-66 -18,-64 12,-78 -24,-74 36,-50 -6,-26 74,-52 -8,0'),
+  throw:pose('10,-93 6,-82 1,-45 26,-76 22,-64 44,-82 42,-62 16,-25 -12,-24 22,0 -18,0'),
   cast: pose('10,-96 6,-85 1,-47 30,-76 -14,-72 54,-72 -22,-88 16,-25 -12,-24 22,0 -18,0'),
   block:pose('2,-90 1,-79 0,-44 16,-62 12,-58 18,-86 14,-76 14,-24 -10,-22 18,0 -14,0'),
   hit:  pose('-14,-92 -8,-81 0,-46 -14,-62 -22,-60 -6,-50 -30,-48 10,-24 -12,-24 14,0 -18,0'),
   ko:   pose('-52,-9 -40,-8 -4,-6 -30,-2 -22,-18 -18,-2 -10,-22 18,-12 20,-3 38,0 42,-4'),
   win:  pose('2,-102 1,-90 0,-50 16,-104 -14,-104 22,-124 -20,-124 10,-26 -10,-26 14,0 -14,0'),
 };
+POSES.pounce=POSES.kick;
 
 // действие: подпись, клавиша синего, клавиша красного
 const ACTIONS={u:['↑','KeyW','ArrowUp'],l:['←','KeyA','ArrowLeft'],r:['→','KeyD','ArrowRight'],
@@ -161,15 +209,19 @@ const ACTIONS={u:['↑','KeyW','ArrowUp'],l:['←','KeyA','ArrowLeft'],r:['→',
 const ARROWS={'↑':'M5 14 L12 6 L19 14','←':'M14 5 L6 12 L14 19','→':'M10 5 L18 12 L10 19'};
 const keyLabel=c=>({ArrowUp:'↑',ArrowLeft:'←',ArrowRight:'→',ArrowDown:'↓'})[c]??c.slice(3);
 
-const app=$('#app'), stage=$('#stage'), arena=$('.arena'), cv=$('#cv'), ctx=cv.getContext('2d');
-const menu=$('#menu'), cover=$('#cover');
+const app=$('#app'), stage=$('#stage'), arena=$('.arena'), cv=$('#cv');
+const menu=$('#menu'), cover=$('#cover'), pickSheet=$('#pick');
+let ctx=cv.getContext('2d');
 let S=1, W=800, H=225, GY=210, dpr=1;
 
-const G={mode:'menu',round:1,time:60,wins:[0,0],winner:-1,t:0,clock:0,stop:0,slow:0,shake:0,cheer:0,paused:false,banner:null};
-const mkFighter=i=>({i,x:0,y:0,vx:0,vy:0,kb:0,face:i?-1:1,hp:100,hpShow:100,energy:0,state:'idle',t:0,done:false,
-  stun:0,moving:false,keys:{},buf:{},pose:POSES.idle.map(p=>[...p])});
+const G={mode:'menu',round:1,time:60,wins:[0,0],winner:-1,t:0,clock:0,stop:0,slow:0,shake:0,cheer:0,paused:false,
+  banner:null,note:null,ev:null,evT:9,lastEv:''};
+const mkFighter=i=>({i,c:CHARS[i],x:0,y:0,vx:0,vy:0,kb:0,face:i?-1:1,hp:100,hpShow:100,energy:0,state:'idle',t:0,done:false,
+  stun:0,moving:false,combo:0,comboT:0,dashCd:0,inv:0,fast:0,jumps:1,boost:1,spin:0,spinV:0,
+  keys:{},buf:{},tap:{},pose:POSES.idle.map(p=>[...p])});
 const F=[mkFighter(0),mkFighter(1)];
-let blots=[], drops=[], words=[], pending=[];   // pending: удары кадра применяются разом, чтобы встречные удары засчитались обоим
+// shots — всё, что летит и бьёт; items — бонусы; pending — удары кадра применяются разом, чтобы встречные засчитались обоим
+let shots=[], items=[], drops=[], words=[], pending=[];
 
 // ---------- управление ----------
 const KEYMAP={}, BTN=[{},{}];
@@ -177,16 +229,23 @@ document.querySelectorAll('.pad').forEach((pad,p)=>{
   for(const [a,[label,...codes]] of Object.entries(ACTIONS)){
     const b=document.createElement('button');
     b.className='btn'+(a==='s'?' super':''); b.style.gridArea=a; b.tabIndex=-1;
-    b.setAttribute('aria-label',`${NAME[p]}: ${({u:'прыжок',l:'влево',r:'вправо'})[a]??label}`);
-    b.innerHTML=(ARROWS[label]?`<svg viewBox="0 0 24 24"><path d="${ARROWS[label]}"/></svg>`:label)+`<kbd>${keyLabel(codes[p])}</kbd>`;
+    b.setAttribute('aria-label',`${NAME[p]}: ${({u:'прыжок',l:'влево',r:'вправо',s:'суперсила'})[a]??label}`);
+    b.innerHTML=(ARROWS[label]?`<svg viewBox="0 0 24 24"><path d="${ARROWS[label]}"/></svg>`:`<span>${label}</span>`)+`<kbd>${keyLabel(codes[p])}</kbd>`;
     b.onpointerdown=e=>{e.preventDefault();b.setPointerCapture(e.pointerId);press(p,a,true);};
     b.onpointerup=b.onpointercancel=()=>press(p,a,false);
     pad.append(b); BTN[p][a]=b; KEYMAP[codes[p]]=[p,a];
   }
 });
 function press(p,a,down){
-  F[p].keys[a]=down; if(down) F[p].buf[a]=.15;   // нажатие «помнится» 0.15 с, чтобы удар не терялся
-  BTN[p][a].classList.toggle('on',down);
+  const f=F[p];
+  f.keys[a]=down; BTN[p][a].classList.toggle('on',down);
+  if(!down) return;
+  f.buf[a]=.15;                                   // нажатие «помнится» 0.15 с, чтобы удар не терялся
+  if(a==='l'||a==='r'){                            // двойное нажатие вбок — рывок
+    const now=performance.now();
+    if(now-(f.tap[a]||0)<270) f.buf['d'+a]=.15;
+    f.tap[a]=now;
+  }
 }
 const keyFor=c=>KEYMAP[c]&&(vsBot?[0,KEYMAP[c][1]]:KEYMAP[c]);
 const releaseAll=()=>[0,1].forEach(p=>Object.keys(ACTIONS).forEach(a=>press(p,a,false)));
@@ -222,21 +281,28 @@ $('#mSound').onclick=e=>{soundOn=!soundOn; e.target.textContent='Звук: '+(so
 
 // ---------- ход матча ----------
 const say=(text,color)=>G.banner={text,color,t:0};
-function startMatch(withBot){
+function note(text){G.note={text,t:0};}
+const JOKES=['Учитель вышел из класса','Последняя парта, потише!','Кто проиграет — моет доску','Только не по тетради!',
+  'Дневники на стол','Контрольная отменяется','Звонок для учителя'];
+function startMatch(withBot,chars){
+  lastSetup=[withBot,chars];
   vsBot=withBot; stage.classList.toggle('vsbot',vsBot);
   NAME[1]=vsBot?'Бот':'Красный'; DATIVE[1]=vsBot?'Боту':'Красному';
-  G.round=1; G.wins=[0,0]; F.forEach(f=>f.energy=0);
-  menu.hidden=true; startRound();
+  G.round=1; G.wins=[0,0];
+  F.forEach((f,i)=>{f.energy=0; f.c=CHARS[chars[i]]; BTN[i].s.firstChild.textContent=f.c.sp;});
+  menu.hidden=pickSheet.hidden=true; startRound();
 }
 function startRound(){
-  F.forEach((f,i)=>Object.assign(f,{x:W*(i?.7:.3),y:0,vx:0,vy:0,kb:0,face:i?-1:1,hp:100,hpShow:100,state:'idle',t:0,buf:{}}));
+  F.forEach((f,i)=>Object.assign(f,{x:W*(i?.7:.3),y:0,vx:0,vy:0,kb:0,face:i?-1:1,hp:100,hpShow:100,state:'idle',t:0,
+    combo:0,comboT:0,dashCd:0,inv:0,fast:0,boost:1,spin:0,buf:{}}));
   brains.forEach(b=>b.t=.3); releaseAll();
-  blots=[]; G.mode='intro'; G.t=0; G.time=60; G.winner=-1;
-  say('Раунд '+G.round,THEME.pencil);
+  shots=[]; items=[]; G.ev=null; G.evT=7+Math.random()*5;
+  G.mode='intro'; G.t=0; G.time=60; G.winner=-1;
+  say('Раунд '+G.round,THEME.pencil); note(pick(JOKES));
 }
 function endRound(w,text){
   if(G.mode!=='fight') return;
-  G.mode='over'; G.t=0; G.winner=w;
+  G.mode='over'; G.t=0; G.winner=w; G.ev=null;
   if(w>=0) G.wins[w]++;
   say(w<0?'Ничья!':text,THEME.red);
 }
@@ -244,90 +310,173 @@ function nextRound(){
   const w=G.winner;
   if(w<0||G.wins[w]<2){G.round++; return startRound();}
   G.mode='menu'; releaseAll();
-  $('#mTitle').innerHTML=`${NAME[w]} победил!<span class="grade">5</span>`;
+  const c=F[w].c, next=vsBot&&w===0&&LEVELS[botLv+1];
+  let extra=next?` Теперь попробуй бота «${next.name}».`:'';
+  if(vsBot&&w===0&&botLv===2&&!unlocked){
+    unlocked=true; save('scrib','1');
+    extra=' Босс повержен! Открыт секретный боец — Каракуля.';
+  }
+  $('#mTitle').innerHTML=`${c.name} победил${c.fem?'а':''}!<span class="grade">5</span>`;
   $('#mTitle').style.color=INK[w];
-  const next=vsBot&&w===0&&LEVELS[botLv+1];
-  $('#mText').textContent=`Счёт ${G.wins[w]}:${G.wins[1-w]}. ${DATIVE[1-w]} двойка в дневник и право на реванш.`+(next?` Теперь попробуй бота «${next.name}».`:'');
-  menu.hidden=false; showPick(vsBot);   // после матча с ботом сразу выбор уровня: реванш или посложнее
+  $('#mText').textContent=`Счёт ${G.wins[w]}:${G.wins[1-w]}. ${DATIVE[1-w]} двойка в дневник и право на реванш.`+extra;
+  $('#mAgain').hidden=false;
+  menu.hidden=false; showLevels(vsBot);   // после матча с ботом сразу выбор уровня: реванш или посложнее
 }
-$('#mFriend').onclick=()=>startMatch(false);
+
+// ---------- меню: режим → уровень бота → бойцы ----------
 const levelBtns=LEVELS.map((L,i)=>{
   const b=document.createElement('button'); b.className='go';
   b.innerHTML=`${L.name[0].toUpperCase()+L.name.slice(1)}<small>${L.note}</small>`;
-  b.onclick=()=>{botLv=i; try{localStorage.setItem('botLv',i)}catch{} startMatch(true);};
+  b.onclick=()=>{botLv=i; save('botLv',i); chooseChars(true);};
   $('#mLevels').append(b); return b;
 });
-function showPick(on){
+function showLevels(on){
   $('#mMain').hidden=on; $('#mLevels').hidden=$('#mBack').hidden=!on;
   levelBtns.forEach((b,i)=>b.classList.toggle('picked',i===botLv));
   (on?levelBtns[botLv]:$('#mBot')).focus();
 }
-$('#mBot').onclick=()=>showPick(true);
-$('#mBack').onclick=()=>showPick(false);
+$('#mFriend').onclick=()=>chooseChars(false);
+$('#mBot').onclick=()=>showLevels(true);
+$('#mBack').onclick=()=>showLevels(false);
+$('#mAgain').onclick=()=>startMatch(...lastSetup);
+
+const cards=[...CHARS,null].map((c,idx)=>{                 // последняя карточка — случайный боец
+  const b=document.createElement('button'); b.className='card';
+  b.innerHTML=`<canvas width="108" height="124"></canvas><span></span><small></small>`;
+  b.onclick=()=>choose(idx);
+  $('#pGrid').append(b); return b;
+});
+let picks=[], pickBot=false;
+const available=()=>CHARS.map((c,i)=>i).filter(i=>!CHARS[i].secret||unlocked);
+function chooseChars(withBot){pickBot=withBot; picks=[]; menu.hidden=true; pickSheet.hidden=false; askPick();}
+function askPick(){
+  const i=picks.length;
+  $('#pTitle').textContent=`${i?'Красный':'Синий'}, выбирай бойца`;
+  pickSheet.style.color=INK[i];
+  cards.forEach((b,idx)=>{
+    const c=CHARS[idx], locked=c?.secret&&!unlocked, [cvs,nm,tag]=b.children;
+    b.disabled=!!locked;
+    nm.textContent=!c?'Случайный':locked?'???':c.name;
+    tag.textContent=!c?'пусть решит судьба':locked?'победи босса, чтобы открыть':c.tag;
+    portrait(cvs,locked?null:c,i);
+  });
+}
+function choose(idx){
+  picks.push(CHARS[idx]?idx:pick(available()));
+  if(!pickBot&&picks.length<2) return askPick();
+  if(pickBot) picks.push(pick(available()));
+  startMatch(pickBot,picks);
+}
+$('#pBack').onclick=()=>{pickSheet.hidden=true; menu.hidden=false;};
 
 // ---------- бойцы ----------
 function setState(f,s){f.state=s; f.t=0; f.done=false;}
 const inBody=(y,o)=>y<o.y+6&&y>o.y-TALL;
 
 function strike(f,o,a){
-  const dx=(o.x-f.x)*f.face;
-  if(dx>-12&&dx<a.reach&&inBody(f.y+a.h,o)) pending.push(()=>hit(o,f.face,a));
+  const dx=(o.x-f.x)*f.face, mult=f.boost; f.boost=1;
+  if(a.toss&&o.y<-10) return;
+  if(dx>-12&&dx<a.reach&&inBody(f.y+a.h,o)) pending.push(()=>hit(o,f.face,a,f,mult));
 }
-function hit(v,dir,a){
-  if(v.state==='ko'||G.mode!=='fight') return;
-  const att=F[1-v.i], blocked=v.state==='block'&&v.face===-dir, heavy=a.dmg>8;
+// att — кто ударил (null у событий вроде ластика)
+function hit(v,dir,a,att,mult=1){
+  if(v.state==='ko'||G.mode!=='fight'||v.inv>0) return;
+  const melee='wind' in a, heavy=a.dmg>8;
+  const blocked=!a.unblock&&v.state==='block'&&v.face===-dir;
   const hx=v.x-dir*14, hy=GY+v.y+a.h;
-  v.hp=Math.max(0,v.hp-(blocked?Math.ceil(a.dmg*.15):a.dmg));
+  if(blocked&&v.t<.12){                            // блок в последний момент — парирование
+    word('Парировал!',hx,hy-22,INK[v.i]); v.energy=Math.min(100,v.energy+15); G.stop=.08; beep(700,.1,'triangle');
+    if(melee&&att){att.stun=.55; att.kb=-dir*220; att.combo=0; setState(att,'hit');}
+    return;
+  }
+  let dmg=a.dmg*mult*v.c.tough;
+  if(att) dmg*=att.c.power*(att.hp<=25?1.3:1);     // при здоровье ниже четверти боец в ярости бьёт сильнее
+  if(blocked) dmg*=.15;
+  else if(att){
+    att.combo=att.comboT>0?att.combo+1:1; att.comboT=1.3;
+    dmg*=1+Math.min(4,att.combo-1)*.12;
+    if(att.combo>=3) word('комбо ×'+att.combo,hx,hy-50,THEME.red);
+  }
+  v.hp=Math.max(0,v.hp-Math.ceil(dmg));
   v.kb=dir*a.push*(blocked?.4:1);
   if(blocked){word('Блок',hx,hy,THEME.pencil); G.stop=.03; beep(180,.05);}
   else{
-    v.vx=0; v.stun=a.stun; setState(v,'hit');
-    v.energy=Math.min(100,v.energy+8); att.energy=Math.min(100,att.energy+a.gain);
+    v.vx=0; v.stun=a.stun; v.combo=0; setState(v,'hit');
+    v.energy=Math.min(100,v.energy+8);
+    if(att) att.energy=Math.min(100,att.energy+a.gain);
+    if(a.toss){v.vy=-430; v.kb=-dir*700;}         // бросок: соперник летит через бросающего
     G.stop=heavy?.09:.05; G.shake=heavy?9:5; G.cheer=1;
-    word(pick(a.words)+'!',hx,hy-22,INK[att.i]); splash(hx,hy,dir,INK[v.i],a.dmg);
+    word(pick(a.words)+'!',hx,hy-22,att?INK[att.i]:THEME.pencil); splash(hx,hy,dir,INK[v.i],a.dmg);
     beep(heavy?90:140,.12,'sawtooth');
   }
   if(v.hp<=0){
-    setState(v,'ko'); v.vy=-320; v.kb=dir*380; G.slow=.9; G.shake=14;
-    endRound(att.i,'Нокаут!');
+    setState(v,'ko'); v.vx=0; v.vy=-480; v.kb=dir*520; v.spin=0; v.spinV=dir*10;   // нокаут: улетает кувырком
+    G.slow=.9; G.shake=14;
+    endRound(att?att.i:1-v.i,'Нокаут!');
   }
 }
+// суперсила, когда чернила полные
+function special(f,o){
+  const kind=f.c.kind==='random'?pick(KINDS):f.c.kind, d=f.face, i=f.i;
+  beep(520,.2,'triangle');
+  if(kind==='blot') shots.push({kind,i,x:f.x+d*50,y:f.y-58,vx:d*430});
+  if(kind==='plane') shots.push({kind,i,x:f.x+d*50,y:f.y-62,y0:f.y-62,vx:d*600});
+  if(kind==='bomb') shots.push({kind,i,x:f.x+d*30,y:f.y-80,vx:d*clamp(Math.abs(o.x-f.x)-30,110,360)/.99,vy:-430});
+  if(kind==='bolt') shots.push({kind,i,x:o.x});
+  if(kind==='stomp'){G.shake=10; for(const s of [-1,1]) shots.push({kind:'wave',i,x:f.x,vx:s*380});}
+  if(kind==='laser'){
+    shots.push({kind,i,x:f.x,y:f.y-70,dir:d});
+    if((o.x-f.x)*d>0&&inBody(f.y-70,o)) hit(o,d,SPEC.laser,f);
+  }
+  if(kind==='blink'){                              // исчезнуть и ударить из-за спины
+    puff(f.x,GY+f.y-50);
+    const side=Math.sign(o.x-f.x)||1, nx=o.x+side*46;
+    f.x=nx>24&&nx<W-24?nx:o.x-side*46; f.face=o.x>=f.x?1:-1;
+    puff(f.x,GY+f.y-50); f.boost=2.4; setState(f,'punch');
+  }
+  if(kind==='pounce'){f.vy=-380; f.vx=d*430; setState(f,'pounce');}
+}
 function updateFighter(f,o,dt,live){
-  f.t+=dt;
+  const c=f.c;
+  f.t+=dt; f.comboT-=dt; f.dashCd-=dt; f.inv-=dt; f.fast-=dt;
   for(const a in f.buf) f.buf[a]-=dt;
   const k=live?f.keys:{}, want=a=>live&&f.buf[a]>0&&!(f.buf[a]=0);
-  const ground=f.y>=0, a=ATK[f.state];
+  const ground=f.y>=0&&f.vy>=0, a=ATK[f.state];
+  if(ground) f.jumps=c.jumps||1;
   if(a){
     if(!f.done&&f.t>=a.wind){
       f.done=true;
-      if(f.state==='cast'){blots.push({x:f.x+f.face*50,y:f.y-58,dir:f.face,i:f.i}); beep(520,.2,'triangle');}
-      else strike(f,o,a);
+      if(f.state==='cast') special(f,o); else strike(f,o,a);
     }
-    if(f.t>=a.wind+a.act+a.rec) setState(f,'idle');
+    if(ATK[f.state]===a&&f.t>=a.wind+a.act+a.rec) setState(f,'idle');
   }
   else if(f.state==='hit'){if(f.t>=f.stun) setState(f,'idle');}
-  else if(f.state==='block'){if(!k.b) setState(f,'idle');}
+  else if(f.state==='block'){
+    if(want('p')) setState(f,'throw');             // Блок + Удар — бросок, пробивает блок
+    else if(!k.b) setState(f,'idle');
+  }
 
   if(f.state==='idle'||f.state==='block') f.face=o.x>=f.x?1:-1;
   if(f.state==='idle'){
-    const dir=(k.r?1:0)-(k.l?1:0);
-    f.vx=dir*SPEED; f.moving=dir!==0;
+    const dir=(k.r?1:0)-(k.l?1:0), dash=want('dl')?-1:want('dr')?1:0;
+    f.vx=dir*SPEED*c.speed*(f.fast>0?1.45:1); f.moving=dir!==0;
+    if(dash&&f.dashCd<=0){f.kb=dash*620; f.dashCd=.55; f.inv=.16; puff(f.x,GY+f.y-12);}   // рывок: на миг неуязвим
     if(want('s')&&f.energy>=100){f.energy=0; setState(f,'cast');}
-    else if(want('p')) setState(f,'punch');
+    else if(want('p')) setState(f,k.b&&ground?'throw':'punch');
     else if(want('k')) setState(f,'kick');
-    else if(ground&&want('u')) f.vy=-JUMP;
+    else if(want('u')&&f.jumps>0){f.vy=-JUMP*c.jump; f.jumps--; if(!ground) puff(f.x,GY+f.y);}
     else if(ground&&k.b) setState(f,'block');
   }
-  if(f.state!=='idle'&&ground) f.vx=0;
-  f.vy+=GRAV*dt; f.y+=f.vy*dt;
+  if(f.state!=='idle'&&f.y>=0&&f.vy>=0) f.vx=0;
+  f.vy+=GRAV*(G.ev?.type==='moon'?.35:1)*dt; f.y+=f.vy*dt;
   if(f.y>=0){f.y=0; f.vy=0;}
+  if(f.state==='ko') f.spin=f.y<0?f.spin+f.spinV*dt:0;
   f.kb*=Math.exp(-7*dt);
   f.x=clamp(f.x+(f.vx+f.kb)*dt,24,W-24);
 }
 const poseName=f=>f.state!=='idle'?f.state:f.y<0?'jump':f.moving?(Math.floor(G.clock*9)%2?'walkA':'walkB'):'idle';
 
 // ---------- бот ----------
-
 function botUpdate(p,dt){
   const me=F[p], o=F[1-p], B=brains[p], L=LEVELS[botLv];
   const hold=h=>{['l','r','b'].forEach(a=>{if(!h[a]!==!B.held[a]) press(p,a,!!h[a]);}); B.held=h;};
@@ -336,52 +485,140 @@ function botUpdate(p,dt){
   B.t=L.think*(.6+Math.random()*.8);
 
   const chance=x=>Math.random()<x, tap=a=>me.buf[a]=.15, sharp=!chance(L.miss);
-  const dx=o.x-me.x, dist=Math.abs(dx), fwd=dx>0?'r':'l', back=dx>0?'l':'r';
+  const dx=o.x-me.x, dist=Math.abs(dx), fwd=dx>0?'r':'l', back=dx>0?'l':'r', ground=me.y>=0;
   const oa=ATK[o.state], left=oa?oa.wind+oa.act+oa.rec-o.t:0;
-  const threat=oa&&o.state!=='cast'&&!o.done&&o.t>=L.react&&o.face*(me.x-o.x)<oa.reach+30;
-  const blot=blots.find(b=>b.i!==p&&Math.sign(me.x-b.x)===b.dir), bd=blot?Math.abs(blot.x-me.x):1e9;
-  const aggro=L.aggro+(me.hp<o.hp?.15:0), cornered=me.x<70||me.x>W-70;
+  const inFront=o.face*(me.x-o.x)>0;
+  const threat=oa&&!o.done&&o.t>=L.react&&(o.state==='cast'?o.c.kind==='laser'&&inFront:o.face*(me.x-o.x)<oa.reach+30);
+  const foe=s=>s.i!==p, coming=s=>Math.sign(me.x-s.x)===Math.sign(s.vx), near=(s,r)=>Math.abs(s.x-me.x)<r;
+  const shot=shots.find(s=>['blot','plane','bomb'].includes(s.kind)&&foe(s)&&coming(s)&&near(s,200));
+  const low=shots.find(s=>(s.kind==='eraser'||s.kind==='wave')&&foe(s)&&coming(s)&&near(s,100));
+  const bolt=shots.find(s=>s.kind==='bolt'&&foe(s)&&!s.done&&near(s,44));
+  const gift=items.find(g=>Math.abs(g.x-me.x)<Math.abs(g.x-o.x)+60);
+  const aggro=L.aggro+(me.hp<o.hp?.15:0), cornered=me.x<70||me.x>W-70, r=me.c.range;
   const h={};
 
-  if(blot&&bd<190&&sharp){                                   // летит клякса: перепрыгнуть или закрыться
-    if(me.y>=0&&bd>90&&bd<150&&chance(.5)) tap('u'); else h.b=true;
+  if(bolt&&sharp){                                           // под ногами метка молнии — уйти
+    let away=me.x>=bolt.x?'r':'l';
+    if((away==='r'&&me.x>W-70)||(away==='l'&&me.x<70)) away=away==='r'?'l':'r';
+    h[away]=true; if(chance(.5)) tap('d'+away);
   }
-  else if(threat&&sharp&&me.y>=0) h.b=true;                  // соперник замахнулся — блок
+  else if(low&&sharp){if(ground) tap('u');}                  // ластик или волна по земле — прыжок
+  else if(shot&&sharp){                                      // летит снаряд: перепрыгнуть или закрыться
+    const bd=Math.abs(shot.x-me.x);
+    if(shot.kind==='blot'&&ground&&bd>90&&bd<150&&chance(.5)) tap('u'); else h.b=true;
+  }
+  else if(threat&&sharp&&ground){                            // соперник замахнулся — блок или рывок назад
+    if(o.state!=='cast'&&!cornered&&chance(aggro*.25)) tap('d'+back); else h.b=true;
+  }
   else if(oa&&o.done&&left>.12&&dist<ATK.punch.reach-4) tap(dist>55&&left>.22?'k':'p'); // наказать за промах
   else if(o.state==='hit'&&dist<ATK.kick.reach-4) tap(dist>56?'k':'p');                // добить, пока оглушён
   else if(o.y<-25&&o.vy>0&&dist<70&&sharp) tap('p');         // сбить в прыжке
   else if(me.y<0&&dist<80) tap('k');                         // удар ногой с прыжка
-  else if(me.energy>=100&&o.y>=0&&(dist>170||(oa&&left>.3&&dist>90))) tap('s');
+  else if(me.energy>=100&&o.y>=0&&dist>=r[0]&&dist<=r[1]) tap('s');
   else if(cornered&&dist<60&&chance(.35)){h[fwd]=true; tap('u');}                      // выпрыгнуть из угла
   else if(dist>82){
-    if(dist>130&&dist<220&&chance(.12*aggro)) tap('u');      // запрыгнуть сверху
-    h[fwd]=true;
+    if(gift){if(Math.abs(gift.x-me.x)>14) h[gift.x>me.x?'r':'l']=true;}                 // сбегать за бонусом
+    else{
+      if(dist>130&&dist<220&&chance(.12*aggro)) tap('u');    // запрыгнуть сверху
+      h[fwd]=true;
+    }
   }
-  else if(o.state==='block'){if(chance(.5)&&!cornered) h[back]=true; else tap('k');}   // в блок не долбить
+  else if(o.state==='block'){                                // в блок не долбить: бросок или отойти
+    if(dist<48&&ground&&chance(.6)){h.b=true; tap('p');}
+    else if(chance(.5)) h[fwd]=true;
+    else if(!cornered) h[back]=true;
+  }
   else if(chance(aggro)) tap(dist>60?'k':'p');
   else if(chance(L.guard)) h.b=true;                         // ждать удар под блоком
   else if(!cornered) h[back]=true;                           // отойти и выманить на промах
   hold(h);
 }
 
+// ---------- события на листе ----------
+const EVENTS={
+  eraser(){const left=Math.random()<.5; shots.push({kind:'eraser',x:left?-50:W+50,vx:left?330:-330,hit:[0,0]}); return 'Берегись, ластик!';},
+  gift(){items.push({type:pick(['heal','ink','fast']),x:70+Math.random()*(W-140),y:-H,life:9}); return 'Что-то падает с неба';},
+  moon(){G.ev={type:'moon',t:7}; return 'Невесомость!';},
+  bell(){G.ev={type:'bell',t:6}; return 'Перемена! Всё быстрее';},
+  dark(){G.ev={type:'dark',t:5.5}; return 'Выключили свет';},
+};
+const GIFT={heal:['5','+20 здоровья'],ink:['Ш','Шпаргалка: чернила полные'],fast:['»','Энергетик: скорость']};
+function updateEvents(dt){
+  if(G.ev&&(G.ev.t-=dt)<=0) G.ev=null;
+  if((G.evT-=dt)<=0){
+    const type=pick(Object.keys(EVENTS).filter(e=>e!==G.lastEv));
+    G.lastEv=type; G.evT=10+Math.random()*6; note(EVENTS[type]()); beep(880,.15,'sine');
+  }
+  items=items.filter(g=>{
+    g.y=Math.min(0,g.y+130*dt);
+    const f=F.find(f=>Math.abs(f.x-g.x)<28&&g.y>-70&&f.y-TALL<g.y&&f.state!=='ko');
+    if(!f) return (g.life-=dt)>0;
+    if(g.type==='heal') f.hp=Math.min(100,f.hp+20);
+    if(g.type==='ink') f.energy=100;
+    if(g.type==='fast') f.fast=7;
+    word(GIFT[g.type][1],g.x,GY-90,INK[f.i]); beep(660,.15,'sine');
+    return false;
+  });
+}
+function updateShots(dt){
+  shots=shots.filter(s=>{
+    s.t=(s.t||0)+dt;
+    const own=F[s.i], o=F[1-s.i], spec=SPEC[s.kind], dir=Math.sign(s.vx)||1;
+    switch(s.kind){
+      case 'plane': s.y=s.y0+Math.sin(s.t*14)*14;
+      case 'blot':
+        s.x+=s.vx*dt;
+        if(Math.random()<.4) drops.push({x:s.x,y:GY+s.y,color:INK[s.i],vx:-dir*40,vy:-20,r:1.5+Math.random()*2,life:.3});
+        if(Math.abs(s.x-o.x)<20&&inBody(s.y,o)&&o.state!=='ko'){hit(o,dir,spec,own); splash(s.x,GY+s.y,dir,INK[s.i],20); return false;}
+        return s.x>-30&&s.x<W+30;
+      case 'bomb':
+        s.vy+=900*dt; s.x+=s.vx*dt; s.y+=s.vy*dt;
+        if(s.y<0&&!(Math.abs(s.x-o.x)<22&&inBody(s.y,o))) return true;
+        G.shake=10; splash(s.x,GY+Math.min(0,s.y),0,THEME.pencil,30); beep(70,.3,'sawtooth');
+        if(Math.abs(s.x-o.x)<60&&o.y>-80) hit(o,Math.sign(o.x-s.x)||dir,spec,own);
+        return false;
+      case 'laser': return s.t<.2;
+      case 'bolt':
+        if(!s.done&&s.t>=.75){
+          s.done=true; G.shake=10; beep(60,.3,'sawtooth');
+          if(Math.abs(o.x-s.x)<28) hit(o,Math.sign(o.x-s.x)||1,spec,own);
+        }
+        return s.t<1;
+      case 'wave':
+        s.x+=s.vx*dt;
+        if(Math.abs(s.x-o.x)<20&&o.y>-18){hit(o,dir,spec,own); return false;}
+        return s.t<.65;
+      case 'eraser':
+        s.x+=s.vx*dt;
+        for(const f of F) if(!s.hit[f.i]&&Math.abs(s.x-f.x)<36&&f.y>-26&&f.inv<=0){s.hit[f.i]=1; hit(f,dir,spec,null);}
+        return s.x>-70&&s.x<W+70;
+    }
+  });
+}
+
 // ---------- эффекты ----------
-function word(text,x,y,color){words.push({text,x:clamp(x,50,W-50),y,color,t:0,rot:(Math.random()-.5)*.5});}
+function word(text,x,y,color){words.push({text,x:clamp(x,60,W-60),y,color,t:0,rot:(Math.random()-.5)*.4});}
 function splash(x,y,dir,color,power){
-  for(let n=0;n<6+power/2;n++) drops.push({x,y,color,vx:dir*(60+Math.random()*220)+(Math.random()-.5)*120,
+  for(let n=0;n<6+power/2;n++) drops.push({x,y,color,vx:dir*(60+Math.random()*220)+(Math.random()-.5)*(dir?120:500),
     vy:-60-Math.random()*240,r:1.5+Math.random()*3,life:.5+Math.random()*.4});
+}
+function puff(x,y){
+  for(let n=0;n<7;n++) drops.push({x,y,color:THEME.pencil,vx:(Math.random()-.5)*220,vy:-Math.random()*120,r:2+Math.random()*3,life:.3});
 }
 
 function update(dt){
   G.clock+=dt;
   G.shake*=Math.exp(-12*dt); G.cheer*=Math.exp(-3*dt);
   if(G.banner) G.banner.t+=dt;
+  if(G.note) G.note.t+=dt;
   if(G.stop>0){G.stop-=dt; return;}          // hit-stop: кадр замирает на ударе
   if(G.slow>0){G.slow-=dt; dt*=.3;}          // замедление на нокауте
+  if(G.ev?.type==='bell') dt*=1.45;          // «перемена»: всё ускоряется
   G.t+=dt;
   if(G.mode==='intro'&&G.t>1.1){G.mode='fight'; say('Бой!',THEME.red);}
   const live=G.mode==='fight';
   if(live){
-    G.time-=dt;
+    G.time-=dt; updateEvents(dt);
     if(G.time<=0) endRound(F[0].hp===F[1].hp?-1:+(F[1].hp>F[0].hp),'Время!');
   }
   if(G.mode==='over'){
@@ -399,16 +636,9 @@ function update(dt){
     const push=gap/2*(d>=0?1:-1);
     A.x=clamp(A.x-push,24,W-24); B.x=clamp(B.x+push,24,W-24);
   }
-
-  blots=blots.filter(b=>{
-    b.x+=b.dir*430*dt;
-    const o=F[1-b.i];
-    if(Math.random()<.4) drops.push({x:b.x,y:GY+b.y,color:INK[b.i],vx:-b.dir*40,vy:-20,r:1.5+Math.random()*2,life:.3});
-    if(Math.abs(b.x-o.x)<20&&inBody(b.y,o)&&o.state!=='ko'){hit(o,b.dir,BLOT); splash(b.x,GY+b.y,b.dir,INK[b.i],20); return false;}
-    return b.x>-30&&b.x<W+30;
-  });
+  updateShots(dt);
   drops=drops.filter(p=>{p.vy+=900*dt; p.x+=p.vx*dt; p.y+=p.vy*dt; return (p.life-=dt)>0&&p.y<GY+2;});
-  words=words.filter(w=>(w.t+=dt)<.65);
+  words=words.filter(w=>(w.t+=dt)<.75);
 
   const ease=Math.min(1,dt*22);
   F.forEach((f,i)=>{
@@ -425,6 +655,7 @@ let seed=0, boil=0;
 const jit=amp=>{const v=Math.sin(++seed*91.7+boil*47.3)*43758.5; return (v-Math.floor(v)-.5)*2*amp;};
 const backOut=t=>1+2.7*(t-1)**3+1.7*(t-1)**2;
 const line=(...pts)=>{ctx.beginPath(); pts.forEach((p,i)=>i?ctx.lineTo(...p):ctx.moveTo(...p)); ctx.stroke();};
+const dot=(x,y,r)=>{ctx.beginPath(); ctx.arc(x,y,r,0,7); ctx.fill();};
 function wobblyRect(x,y,w,h){
   const c=[[x,y],[x+w,y],[x+w,y+h],[x,y+h]].map(([a,b])=>[a+jit(1),b+jit(1)]);
   line(...c,c[0]);
@@ -440,8 +671,8 @@ function hatch(x0,y,w,h,clipX,clipW,color){
 function drawBackdrop(){
   ctx.globalAlpha=.42; ctx.fillStyle=ctx.strokeStyle=THEME.pencil; ctx.lineWidth=1.5;
   ctx.font=`15px ${FONT}`; ctx.textAlign='left';
-  ctx.fillText('д/з: № 214, 217',W*.08,H*.36);
-  ctx.fillText('2x + 5 = 17',W*.7,H*.42);
+  ctx.fillText('д/з: № 214, 217',W*.08,H*.42);
+  ctx.fillText('2x + 5 = 17',W*.7,H*.48);
   // зрители-каракули подпрыгивают, когда кто-то пропускает удар
   const n=Math.floor(W/70);
   for(let i=0;i<n;i++){
@@ -462,7 +693,7 @@ function drawHud(){
     ctx.globalAlpha=.3; ctx.fillStyle=ink; ctx.fillRect(i?x0+fw:x0+bw-gw,by,gw-fw,bh); ctx.globalAlpha=1;
     hatch(x0,by,bw,bh,i?x0:x0+bw-fw,fw,ink);
     ctx.strokeStyle=ink; ctx.lineWidth=2; wobblyRect(x0,by,bw,bh);
-    // чернила на кляксу
+    // чернила на суперсилу
     const ex=i?x0:x0+bw-ew, e=ew*f.energy/100, full=f.energy>=100;
     ctx.fillStyle=full&&Math.floor(G.clock*6)%2?THEME.pencil:ink; ctx.fillRect(i?ex:ex+ew-e,by+bh+5,e,5);
     ctx.strokeStyle=THEME.pencil; ctx.lineWidth=1.2; wobblyRect(ex,by+bh+5,ew,5);
@@ -472,54 +703,144 @@ function drawHud(){
       const cx=i?x0+bw-16-n*17:x0+2+n*17, cy=by+bh+5;
       line([cx,cy+4],[cx+4,cy+9],[cx+13,cy-2]);
     }
+    ctx.fillStyle=ink; ctx.font=`14px ${FONT}`; ctx.textAlign=i?'right':'left';
+    ctx.fillText(f.c.name+(i&&vsBot?' · бот '+LEVELS[botLv].name:'')+(f.hp<=25&&f.hp>0?' в ярости!':''),i?x0+bw:x0,by+bh+27);
   });
-  if(vsBot){
-    ctx.fillStyle=THEME.red; ctx.font=`14px ${FONT}`; ctx.textAlign='right';
-    ctx.fillText('бот · '+LEVELS[botLv].name,W/2+38+bw,by+bh+26);
-  }
   ctx.fillStyle=THEME.pencil; ctx.font=`30px ${FONT}`; ctx.textAlign='center';
   ctx.fillText(Math.ceil(Math.max(0,G.time)),W/2,by+bh+11);
 }
-function drawFighter(f){
-  const ink=INK[f.i], fy=GY+f.y, breathe=f.state==='idle'?Math.sin(G.clock*5+f.i*2)*1.2:0;
-  const q=f.pose.map(([x,y],j)=>[f.x+x*f.face+jit(1.3),fy+y+(j<7?breathe:0)+jit(1.3)]);
-  const [hx,hy]=q[0], d=f.face;
+
+// Чем бойцы отличаются на вид: (голова x, y, направление, масштаб, точки позы)
+const LOOK={
+  vihr(x,y,d,z){for(const s of [-5,0,5]) line([x+s*z,y-10*z],[x+(s-d*3)*z,y-(18-Math.abs(s)*.5)*z]);},
+  ninja(x,y,d,z){
+    const w=Math.sin(G.clock*8)*3;
+    line([x-d*9*z,y-7*z],[x+d*10*z,y-5*z]);
+    line([x-d*10*z,y-6*z],[x-d*24*z,y-10*z+w]); line([x-d*10*z,y-5*z],[x-d*22*z,y+z-w]);
+  },
+  bugai(x,y,d,z){line([x-8*z,y-11*z],[x+8*z,y-11*z]); line([x+d*z,y-7*z],[x+d*9*z,y-4*z]);},
+  botan(x,y,d,z){
+    for(const s of [6,-3]){ctx.beginPath(); ctx.arc(x+d*s*z,y-z,4*z,0,7); ctx.stroke();}
+    line([x-d*7*z,y-z],[x-d*11*z,y-3*z]); line([x-2*z,y-11*z],[x+d*4*z,y-15*z]);
+  },
+  robot(x,y,d,z){line([x,y-11*z],[x,y-20*z]); dot(x,y-21*z,2.5); line([x+d*2*z,y+5*z],[x+d*8*z,y+5*z]);},
+  cat(x,y,d,z,q){
+    const w=Math.sin(G.clock*6)*4, [tx,ty]=q[2];
+    line([x-9*z,y-6*z],[x-8*z,y-18*z],[x-2*z,y-10*z]); line([x+2*z,y-10*z],[x+8*z,y-18*z],[x+9*z,y-6*z]);
+    line([x+d*8*z,y+2*z],[x+d*19*z,y]); line([x+d*8*z,y+4*z],[x+d*19*z,y+6*z]);
+    line([tx,ty],[tx-d*14*z,ty-3*z],[tx-d*21*z,ty-16*z+w]);
+  },
+  mag(x,y,d,z){
+    line([x-14*z,y-8*z],[x+14*z,y-8*z]); line([x-9*z,y-9*z],[x-d*3*z,y-33*z],[x+9*z,y-9*z]);
+    line([x+d*3*z,y+9*z],[x+d*6*z,y+21*z],[x+d*9*z,y+8*z]);
+  },
+  pirat(x,y,d,z){
+    line([x-15*z,y-7*z],[x,y-18*z],[x+15*z,y-7*z],[x-15*z,y-7*z]);
+    line([x-d*10*z,y-5*z],[x+d*10*z,y-z]); dot(x+d*5*z,y-z,4*z);
+  },
+  scrib(x,y,d,z){for(let n=0;n<3;n++){ctx.beginPath(); ctx.arc(x+jit(4),y+jit(4),(11+jit(4))*z,0,7); ctx.stroke();} dot(x-d*2*z,y-2*z,1.8);},
+};
+function drawFighter(f,gy=GY){
+  const c=f.c, z=c.size, ink=INK[f.i], fy=gy+f.y, d=f.face, rage=f.hp<=25&&f.hp>0;
+  const breathe=f.state==='idle'?Math.sin(G.clock*5+f.i*2)*1.2:0, amp=rage?2.6:1.3;
+  const q=f.pose.map(([x,y],j)=>[f.x+x*z*d+jit(amp),fy+(y+(j<7?breathe:0))*z+jit(amp)]);
+  const [hx,hy]=q[0];
   // тень-штришок
   ctx.strokeStyle=THEME.pencil; ctx.lineWidth=2; ctx.globalAlpha=.5;
-  const sw=18*(1-Math.min(1,-f.y/140)*.6); line([f.x-sw,GY+4],[f.x+sw,GY+4]); ctx.globalAlpha=1;
+  const sw=18*z*(1-Math.min(1,-f.y/140)*.6); line([f.x-sw,gy+4],[f.x+sw,gy+4]); ctx.globalAlpha=1;
 
+  ctx.save();
+  if(f.state==='ko'&&f.y<0){ctx.translate(f.x,fy-40); ctx.rotate(f.spin); ctx.translate(-f.x,-(fy-40));}
+  if(f.inv>0) ctx.globalAlpha=.45;
   ctx.strokeStyle=ink; ctx.fillStyle=THEME.paper;
-  ctx.lineWidth=f.state==='hit'&&f.t<.1?6.5:4;
+  ctx.lineWidth=(f.state==='hit'&&f.t<.1?6.5:4)*(c.thick||1);
   line(q[1],q[2]); line(q[1],q[3],q[5]); line(q[1],q[4],q[6]); line(q[2],q[7],q[9]); line(q[2],q[8],q[10]);
-  ctx.beginPath(); ctx.arc(hx,hy,11,0,7); ctx.fill(); ctx.stroke();
-  ctx.lineWidth=2.4;
-  if(f.i===0) for(const s of [-5,0,5]) line([hx+s,hy-10],[hx+s-d*3,hy-18+Math.abs(s)*.5]);   // у синего вихры
-  else{                                                                                      // у красного повязка с хвостами
-    const wave=Math.sin(G.clock*8)*3;
-    line([hx-d*9,hy-7],[hx+d*10,hy-5]);
-    line([hx-d*10,hy-6],[hx-d*24,hy-10+wave]); line([hx-d*10,hy-5],[hx-d*22,hy+1-wave]);
-  }
-  const ex=hx+d*5, ey=hy-1;
+  if(c.id==='robot'){ctx.fillRect(hx-10*z,hy-10*z,20*z,20*z); wobblyRect(hx-10*z,hy-10*z,20*z,20*z);}
+  else{ctx.beginPath(); ctx.arc(hx,hy,11*z,0,7); ctx.fill(); ctx.stroke();}
+  ctx.lineWidth=2.4; ctx.fillStyle=ink;
+  LOOK[c.id](hx,hy,d,z,q);
+  const ex=hx+d*5*z, ey=hy-z;
   if(f.state==='ko'){line([ex-3,ey-3],[ex+3,ey+3]); line([ex-3,ey+3],[ex+3,ey-3]);}
-  else{ctx.fillStyle=ink; ctx.beginPath(); ctx.arc(ex,ey,1.8,0,7); ctx.fill();}
+  else if(c.id!=='pirat') dot(ex,ey,1.8);
+  if(rage) for(const s of [-1,1]) line([hx+s*16*z,hy-16*z],[hx+s*21*z,hy-22*z],[hx+s*18*z,hy-25*z],[hx+s*24*z,hy-31*z]);
+  if(f.fast>0) for(const s of [0,1,2]) line([f.x-d*(22+s*7),fy-30-s*22],[f.x-d*(40+s*7),fy-30-s*22]);
+  ctx.restore();
+}
+function portrait(cvs,c,i){
+  const main=ctx; ctx=cvs.getContext('2d');
+  ctx.setTransform(1,0,0,1,0,0); ctx.clearRect(0,0,cvs.width,cvs.height);
+  ctx.lineCap=ctx.lineJoin='round';
+  if(c){ctx.setTransform(.76,0,0,.76,0,0); drawFighter({...mkFighter(i),c,face:1,x:66,y:0},156);}
+  else{ctx.fillStyle=INK[i]; ctx.font=`90px ${FONT}`; ctx.textAlign='center'; ctx.fillText('?',54,95);}
+  ctx=main;
+}
+
+function drawShots(){
+  for(const s of shots){
+    const ink=INK[s.i]??THEME.pencil, y=GY+(s.y||0), dir=Math.sign(s.vx)||s.dir||1;
+    ctx.fillStyle=ctx.strokeStyle=ink; ctx.lineWidth=2.4; ctx.globalAlpha=1;
+    if(s.kind==='blot') for(let n=0;n<6;n++) dot(s.x+jit(6),y+jit(6),5+jit(2));
+    if(s.kind==='plane') line([s.x+dir*16,y],[s.x-dir*12,y-8],[s.x-dir*6,y],[s.x-dir*12,y+7],[s.x+dir*16,y]);
+    if(s.kind==='bomb'){dot(s.x,y,8); line([s.x,y-8],[s.x+4,y-15]); ctx.fillStyle=THEME.red; dot(s.x+4+jit(2),y-16+jit(2),2.5);}
+    if(s.kind==='laser'){
+      ctx.globalAlpha=1-s.t/.2; ctx.lineWidth=7; line([s.x+dir*30,y],[dir>0?W+20:-20,y+jit(2)]);
+      ctx.strokeStyle=THEME.paper; ctx.lineWidth=2; line([s.x+dir*30,y],[dir>0?W+20:-20,y]);
+    }
+    if(s.kind==='bolt'){
+      if(!s.done){                                 // метка: сюда ударит молния
+        ctx.strokeStyle=THEME.pencil; const r=10+28*(1-s.t/.75);
+        ctx.beginPath(); ctx.ellipse(s.x,GY,r,r*.3,0,0,7); ctx.stroke();
+        line([s.x-7,GY-5],[s.x+7,GY+5]); line([s.x-7,GY+5],[s.x+7,GY-5]);
+      }else{
+        ctx.globalAlpha=1-(s.t-.75)/.25; ctx.lineWidth=5;
+        const pts=[]; for(let yy=-10;yy<GY;yy+=28) pts.push([s.x+jit(16),yy]);
+        line(...pts,[s.x,GY]);
+      }
+    }
+    if(s.kind==='wave'){ctx.globalAlpha=1-s.t/.65; ctx.lineWidth=3; line([s.x,GY],[s.x+dir*9,GY-12],[s.x,GY-22],[s.x+dir*7,GY-32]);}
+    if(s.kind==='eraser'){
+      ctx.fillStyle=THEME.margin; ctx.fillRect(s.x-32,GY-26,64,26);
+      ctx.strokeStyle=THEME.pencil; ctx.lineWidth=2; wobblyRect(s.x-32,GY-26,64,26);
+      ctx.fillStyle=THEME.paper; ctx.font=`13px ${FONT}`; ctx.textAlign='center'; ctx.fillText('ЛАСТИК',s.x,GY-8);
+      for(let n=1;n<4;n++) line([s.x-dir*(36+n*9),GY-6-n*5],[s.x-dir*(50+n*9),GY-6-n*5]);
+    }
+  }
+  ctx.globalAlpha=1;
+  for(const g of items){                           // бонусы: мигают перед исчезновением
+    if(g.life<2&&Math.floor(G.clock*8)%2) continue;
+    const y=GY+g.y-18+Math.sin(G.clock*5)*2;
+    ctx.fillStyle=THEME.paper; ctx.strokeStyle=THEME.red; ctx.lineWidth=2.4;
+    ctx.beginPath(); ctx.arc(g.x+jit(.8),y+jit(.8),14,0,7); ctx.fill(); ctx.stroke();
+    ctx.fillStyle=THEME.red; ctx.font=`22px ${FONT}`; ctx.textAlign='center'; ctx.fillText(GIFT[g.type][0],g.x,y+7);
+  }
 }
 function drawEffects(){
-  for(const b of blots){
-    ctx.fillStyle=INK[b.i];
-    for(let n=0;n<6;n++){ctx.beginPath(); ctx.arc(b.x+jit(6),GY+b.y+jit(6),5+jit(2),0,7); ctx.fill();}
-  }
-  for(const p of drops){ctx.fillStyle=p.color; ctx.globalAlpha=Math.min(1,p.life*4); ctx.beginPath(); ctx.arc(p.x,p.y,p.r,0,7); ctx.fill();}
+  for(const p of drops){ctx.fillStyle=p.color; ctx.globalAlpha=Math.min(1,p.life*4); dot(p.x,p.y,p.r);}
   ctx.globalAlpha=1; ctx.textAlign='center'; ctx.lineWidth=5; ctx.strokeStyle=THEME.paper;
   for(const w of words){
     const s=backOut(Math.min(1,w.t/.15));
     ctx.save(); ctx.translate(w.x,w.y-w.t*24); ctx.rotate(w.rot); ctx.scale(s,s);
-    ctx.globalAlpha=Math.min(1,(.65-w.t)*5); ctx.font=`26px ${FONT}`;
+    ctx.globalAlpha=Math.min(1,(.75-w.t)*5); ctx.font=`${w.text.length>12?18:26}px ${FONT}`;
     ctx.strokeText(w.text,0,0); ctx.fillStyle=w.color; ctx.fillText(w.text,0,0); ctx.restore();
+  }
+}
+function drawOverlay(){
+  if(G.ev?.type==='dark'){                         // темнота с «фонариками» вокруг бойцов
+    ctx.globalAlpha=.95*Math.min(1,G.ev.t*2,(5.5-G.ev.t)*3); ctx.fillStyle=THEME.night;
+    ctx.beginPath(); ctx.rect(-30,46,W+60,H);
+    for(const f of F){ctx.moveTo(f.x+62,GY+f.y-55); ctx.arc(f.x,GY+f.y-55,62,0,7);}
+    ctx.fill('evenodd'); ctx.globalAlpha=1;
+  }
+  ctx.textAlign='center'; ctx.strokeStyle=THEME.paper;
+  const n=G.note;
+  if(n&&n.t<2.4){
+    ctx.globalAlpha=Math.min(1,n.t*5,(2.4-n.t)*3); ctx.font=`19px ${FONT}`; ctx.lineWidth=5;
+    ctx.strokeText(n.text,W/2,66); ctx.fillStyle=THEME.red; ctx.fillText(n.text,W/2,66); ctx.globalAlpha=1;
   }
   const b=G.banner;
   if(b&&b.t<1.1){
     const s=backOut(Math.min(1,b.t/.22));
-    ctx.save(); ctx.translate(W/2,H*.56); ctx.rotate(-.05); ctx.scale(s,s);
+    ctx.save(); ctx.translate(W/2,H*.6); ctx.rotate(-.05); ctx.scale(s,s);
     ctx.font=`${Math.min(64,H*.28)}px ${FONT}`; ctx.lineWidth=9;
     ctx.strokeText(b.text,0,0); ctx.fillStyle=b.color; ctx.fillText(b.text,0,0); ctx.restore();
   }
@@ -530,7 +851,7 @@ function draw(now){
   const k=S*dpr;
   ctx.setTransform(k,0,0,k,(Math.random()-.5)*G.shake*k,(Math.random()-.5)*G.shake*k);
   ctx.lineCap=ctx.lineJoin='round';
-  drawBackdrop(); drawHud(); F.forEach(drawFighter); drawEffects();
+  drawBackdrop(); F.forEach(f=>drawFighter(f)); drawShots(); drawEffects(); drawOverlay(); drawHud();
 }
 
 // ---------- экран ----------
