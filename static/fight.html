@@ -18,6 +18,7 @@
   color-scheme:light;
 }
 *{box-sizing:border-box}
+button{-webkit-tap-highlight-color:transparent}
 [hidden]{display:none!important}
 html,body{height:100%;margin:0}
 body,#cover{background:
@@ -64,6 +65,8 @@ h1{margin:0;font:clamp(30px,13vmin,64px)/1.05 var(--display);color:var(--blue);t
 .keys :last-child{color:var(--red)}
 .go{padding:.2em 1.1em;border:var(--stroke) solid;border-radius:var(--wobble);background:var(--paper);
   color:var(--red);font:1.6em var(--display);cursor:pointer}
+.row{display:flex;flex-wrap:wrap;justify-content:center;gap:.4em 1.4em}
+.vsbot .pad[data-p="1"]{visibility:hidden}
 .go:hover{background:var(--hatch),var(--paper)}
 .go:active{transform:scale(.95)}
 .quiet{border:0;background:none;color:var(--pencil);font:inherit;text-decoration:underline dotted;cursor:pointer}
@@ -84,13 +87,19 @@ h1{margin:0;font:clamp(30px,13vmin,64px)/1.05 var(--display);color:var(--blue);t
   </div>
   <div id="menu" class="sheet">
     <h1 id="mTitle">Драка на полях</h1>
-    <p id="mText">Двое на одном экране: синий жмёт слева, красный справа. Бей, ставь блок, копи чернила на кляксу. Кто первым возьмёт два раунда, тот и победил.</p>
+    <p id="mText">Вдвоём на одном экране или против бота. Бей, ставь блок, копи чернила на кляксу. Кто первым возьмёт два раунда, тот и победил.</p>
     <div class="keys">
       <span>Синий: A D ходить · W прыжок · S блок<br>F удар · G нога · T клякса</span>
       <span>Красный: ← → ходить · ↑ прыжок · ↓ блок<br>K удар · L нога · O клякса</span>
     </div>
-    <button id="mGo" class="go" autofocus>В бой!</button>
-    <button id="mSound" class="quiet">Звук: выкл</button>
+    <div class="row">
+      <button id="mFriend" class="go" autofocus>Вдвоём</button>
+      <button id="mBot" class="go">Против бота</button>
+    </div>
+    <div class="row">
+      <button id="mLevel" class="quiet">Бот: умный</button>
+      <button id="mSound" class="quiet">Звук: выкл</button>
+    </div>
   </div>
   <div id="cover" class="sheet" hidden>
     <span id="cDate"></span>
@@ -106,6 +115,17 @@ const THEME=Object.fromEntries(['paper','blue','red','pencil'].map(k=>[k,rootCss
 const FONT="Neucha, Pangolin, 'Comic Sans MS', cursive";
 const INK=[THEME.blue,THEME.red], NAME=['Синий','Красный'], DATIVE=['Синему','Красному'];
 const SPEED=190, JUMP=520, GRAV=1500, TALL=112;
+
+// Бот видит то же, что игрок, и «нажимает» те же кнопки. Уровни отличаются скоростью реакции,
+// частотой решений, числом ошибок и напором.
+const LEVELS=[
+  {name:'лёгкий',react:.25,think:.24,miss:.4,aggro:.3,guard:.15},
+  {name:'умный',react:.08,think:.09,miss:.12,aggro:.5,guard:.35},
+  {name:'босс',react:.03,think:.05,miss:.04,aggro:.6,guard:.45},
+];
+let vsBot=false, botLv=1;
+try{const v=localStorage.getItem('botLv'); if(v!==null&&LEVELS[+v]) botLv=+v;}catch{}
+const brains=[{t:0,held:{}},{t:0,held:{}}];
 
 // Удары: замах, активная фаза, откат (сек), урон, дальность, высота удара, отброс, оглушение, прирост чернил
 const ATK={
@@ -146,7 +166,7 @@ const G={mode:'menu',round:1,time:60,wins:[0,0],winner:-1,t:0,clock:0,stop:0,slo
 const mkFighter=i=>({i,x:0,y:0,vx:0,vy:0,kb:0,face:i?-1:1,hp:100,hpShow:100,energy:0,state:'idle',t:0,done:false,
   stun:0,moving:false,keys:{},buf:{},pose:POSES.idle.map(p=>[...p])});
 const F=[mkFighter(0),mkFighter(1)];
-let blots=[], drops=[], words=[];
+let blots=[], drops=[], words=[], pending=[];   // pending: удары кадра применяются разом, чтобы встречные удары засчитались обоим
 
 // ---------- управление ----------
 const KEYMAP={}, BTN=[{},{}];
@@ -165,13 +185,14 @@ function press(p,a,down){
   F[p].keys[a]=down; if(down) F[p].buf[a]=.15;   // нажатие «помнится» 0.15 с, чтобы удар не терялся
   BTN[p][a].classList.toggle('on',down);
 }
+const keyFor=c=>KEYMAP[c]&&(vsBot?[0,KEYMAP[c][1]]:KEYMAP[c]);
 const releaseAll=()=>[0,1].forEach(p=>Object.keys(ACTIONS).forEach(a=>press(p,a,false)));
 addEventListener('keydown',e=>{
   if(e.code==='Escape'||e.code==='KeyP') return togglePause();
-  const m=KEYMAP[e.code]; if(!m||G.mode==='menu') return;
+  const m=keyFor(e.code); if(!m||G.mode==='menu') return;
   e.preventDefault(); if(!e.repeat) press(...m,true);
 });
-addEventListener('keyup',e=>{const m=KEYMAP[e.code]; if(m) press(...m,false);});
+addEventListener('keyup',e=>{const m=keyFor(e.code); if(m) press(...m,false);});
 $('.pads').addEventListener('touchstart',e=>e.preventDefault(),{passive:false});
 stage.addEventListener('contextmenu',e=>e.preventDefault());
 
@@ -198,12 +219,15 @@ $('#mSound').onclick=e=>{soundOn=!soundOn; e.target.textContent='Звук: '+(so
 
 // ---------- ход матча ----------
 const say=(text,color)=>G.banner={text,color,t:0};
-function startMatch(){
+function startMatch(withBot){
+  vsBot=withBot; stage.classList.toggle('vsbot',vsBot);
+  NAME[1]=vsBot?'Бот':'Красный'; DATIVE[1]=vsBot?'Боту':'Красному';
   G.round=1; G.wins=[0,0]; F.forEach(f=>f.energy=0);
   menu.hidden=true; startRound();
 }
 function startRound(){
   F.forEach((f,i)=>Object.assign(f,{x:W*(i?.7:.3),y:0,vx:0,vy:0,kb:0,face:i?-1:1,hp:100,hpShow:100,state:'idle',t:0,buf:{}}));
+  brains.forEach(b=>b.t=.3); releaseAll();
   blots=[]; G.mode='intro'; G.t=0; G.time=60; G.winner=-1;
   say('Раунд '+G.round,THEME.pencil);
 }
@@ -219,11 +243,15 @@ function nextRound(){
   G.mode='menu'; releaseAll();
   $('#mTitle').innerHTML=`${NAME[w]} победил!<span class="grade">5</span>`;
   $('#mTitle').style.color=INK[w];
-  $('#mText').textContent=`Счёт ${G.wins[w]}:${G.wins[1-w]}. ${DATIVE[1-w]} двойка в дневник и право на реванш.`;
-  $('#mGo').textContent='Реванш';
+  const next=vsBot&&w===0&&LEVELS[botLv+1];
+  $('#mText').textContent=`Счёт ${G.wins[w]}:${G.wins[1-w]}. ${DATIVE[1-w]} двойка в дневник и право на реванш.`+(next?` Теперь попробуй бота «${next.name}».`:'');
   menu.hidden=false;
 }
-$('#mGo').onclick=startMatch;
+$('#mFriend').onclick=()=>startMatch(false);
+$('#mBot').onclick=()=>startMatch(true);
+const showLevel=()=>$('#mLevel').textContent='Бот: '+LEVELS[botLv].name;
+$('#mLevel').onclick=()=>{botLv=(botLv+1)%LEVELS.length; showLevel(); try{localStorage.setItem('botLv',botLv)}catch{}};
+showLevel();
 
 // ---------- бойцы ----------
 function setState(f,s){f.state=s; f.t=0; f.done=false;}
@@ -231,7 +259,7 @@ const inBody=(y,o)=>y<o.y+6&&y>o.y-TALL;
 
 function strike(f,o,a){
   const dx=(o.x-f.x)*f.face;
-  if(dx>-12&&dx<a.reach&&inBody(f.y+a.h,o)) hit(o,f.face,a);
+  if(dx>-12&&dx<a.reach&&inBody(f.y+a.h,o)) pending.push(()=>hit(o,f.face,a));
 }
 function hit(v,dir,a){
   if(v.state==='ko'||G.mode!=='fight') return;
@@ -286,6 +314,44 @@ function updateFighter(f,o,dt,live){
 }
 const poseName=f=>f.state!=='idle'?f.state:f.y<0?'jump':f.moving?(Math.floor(G.clock*9)%2?'walkA':'walkB'):'idle';
 
+// ---------- бот ----------
+
+function botUpdate(p,dt){
+  const me=F[p], o=F[1-p], B=brains[p], L=LEVELS[botLv];
+  const hold=h=>{['l','r','b'].forEach(a=>{if(!h[a]!==!B.held[a]) press(p,a,!!h[a]);}); B.held=h;};
+  if(G.mode!=='fight') return hold({});
+  if((B.t-=dt)>0) return;
+  B.t=L.think*(.6+Math.random()*.8);
+
+  const chance=x=>Math.random()<x, tap=a=>me.buf[a]=.15, sharp=!chance(L.miss);
+  const dx=o.x-me.x, dist=Math.abs(dx), fwd=dx>0?'r':'l', back=dx>0?'l':'r';
+  const oa=ATK[o.state], left=oa?oa.wind+oa.act+oa.rec-o.t:0;
+  const threat=oa&&o.state!=='cast'&&!o.done&&o.t>=L.react&&o.face*(me.x-o.x)<oa.reach+30;
+  const blot=blots.find(b=>b.i!==p&&Math.sign(me.x-b.x)===b.dir), bd=blot?Math.abs(blot.x-me.x):1e9;
+  const aggro=L.aggro+(me.hp<o.hp?.15:0), cornered=me.x<70||me.x>W-70;
+  const h={};
+
+  if(blot&&bd<190&&sharp){                                   // летит клякса: перепрыгнуть или закрыться
+    if(me.y>=0&&bd>90&&bd<150&&chance(.5)) tap('u'); else h.b=true;
+  }
+  else if(threat&&sharp&&me.y>=0) h.b=true;                  // соперник замахнулся — блок
+  else if(oa&&o.done&&left>.12&&dist<ATK.punch.reach-4) tap(dist>55&&left>.22?'k':'p'); // наказать за промах
+  else if(o.state==='hit'&&dist<ATK.kick.reach-4) tap(dist>56?'k':'p');                // добить, пока оглушён
+  else if(o.y<-25&&o.vy>0&&dist<70&&sharp) tap('p');         // сбить в прыжке
+  else if(me.y<0&&dist<80) tap('k');                         // удар ногой с прыжка
+  else if(me.energy>=100&&o.y>=0&&(dist>170||(oa&&left>.3&&dist>90))) tap('s');
+  else if(cornered&&dist<60&&chance(.35)){h[fwd]=true; tap('u');}                      // выпрыгнуть из угла
+  else if(dist>82){
+    if(dist>130&&dist<220&&chance(.12*aggro)) tap('u');      // запрыгнуть сверху
+    h[fwd]=true;
+  }
+  else if(o.state==='block'){if(chance(.5)&&!cornered) h[back]=true; else tap('k');}   // в блок не долбить
+  else if(chance(aggro)) tap(dist>60?'k':'p');
+  else if(chance(L.guard)) h.b=true;                         // ждать удар под блоком
+  else if(!cornered) h[back]=true;                           // отойти и выманить на промах
+  hold(h);
+}
+
 // ---------- эффекты ----------
 function word(text,x,y,color){words.push({text,x:clamp(x,50,W-50),y,color,t:0,rot:(Math.random()-.5)*.5});}
 function splash(x,y,dir,color,power){
@@ -311,7 +377,9 @@ function update(dt){
     if(w&&G.t>.8&&w.state==='idle'&&w.y>=0) setState(w,'win');
     if(G.t>2.6) nextRound();
   }
+  if(vsBot) botUpdate(1,dt);
   F.forEach((f,i)=>updateFighter(f,F[1-i],dt,live));
+  pending.splice(0).forEach(fn=>fn());
 
   // бойцы не проходят друг сквозь друга, но перепрыгнуть можно
   const [A,B]=F, d=B.x-A.x, gap=34-Math.abs(d);
@@ -393,6 +461,10 @@ function drawHud(){
       line([cx,cy+4],[cx+4,cy+9],[cx+13,cy-2]);
     }
   });
+  if(vsBot){
+    ctx.fillStyle=THEME.red; ctx.font=`14px ${FONT}`; ctx.textAlign='right';
+    ctx.fillText('бот · '+LEVELS[botLv].name,W/2+38+bw,by+bh+26);
+  }
   ctx.fillStyle=THEME.pencil; ctx.font=`30px ${FONT}`; ctx.textAlign='center';
   ctx.fillText(Math.ceil(Math.max(0,G.time)),W/2,by+bh+11);
 }
