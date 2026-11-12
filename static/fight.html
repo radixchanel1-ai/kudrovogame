@@ -57,7 +57,7 @@ canvas{display:block}
   grid-template:"u u . p k" var(--b) "l r . b s" var(--b)/var(--b) var(--b) calc(var(--b)*.2) var(--b) var(--b)}
 .pad[data-p="0"]{color:var(--blue)}
 .pad[data-p="1"]{color:var(--red)}
-.vsbot .pad[data-p="1"]{visibility:hidden}
+.vsbot .pad[data-p="1"],.demo .pads{visibility:hidden}
 .btn{position:relative;display:grid;place-items:center;padding:0;border:var(--stroke) solid currentColor;
   border-radius:var(--wobble);background:var(--veil);color:inherit;font:calc(var(--b)*.28)/1 var(--display);
   text-shadow:0 0 3px var(--paper),0 0 3px var(--paper);touch-action:none;transition:transform .08s}
@@ -133,7 +133,6 @@ h2{margin:0;font:clamp(20px,7.5vmin,34px)/1 var(--display)}
   </div>
   <div id="menu" class="sheet">
     <h1 id="mTitle">Школьный комбат</h1>
-    <span id="mStamp" class="stamp">издание второе, исправленное</span>
     <p id="mText"></p>
     <div class="keys">
       <span>Синий: A D ходить · W прыжок · S блок<br>F удар · G нога · T суперсила</span>
@@ -362,7 +361,7 @@ function note(text){G.note={text,t:0};}
 const JOKES=['Учитель вышел из класса','Кто списывал — шаг вперёд','Сменка где?','Не бегать по коридору!','Последняя парта, потише!','Кто проиграет — моет доску','Только не по тетради!',
   'Дневники на стол','Контрольная отменяется','Звонок для учителя'];
 function setupMatch(withBot,chars,wi){
-  setWorld(wi); G.demo=false;
+  setWorld(wi); G.demo=false; stage.classList.remove('demo');
   vsBot=withBot; stage.classList.toggle('vsbot',vsBot);
   NAME[1]=vsBot?'Бот':'Красный'; DATIVE[1]=vsBot?'Боту':'Красному';
   G.round=1; G.wins=[0,0];
@@ -376,7 +375,7 @@ function startMatch(withBot,chars,wi=0){
 // показательный бой двух ботов за меню
 function startDemo(){
   const pool=available();
-  setupMatch(false,[pick(pool),pick(pool)],Math.random()*WORLDS.length|0); G.demo=true;
+  setupMatch(false,[pick(pool),pick(pool)],Math.random()*WORLDS.length|0); G.demo=true; stage.classList.add('demo');   // в показательном бою кнопок нет
 }
 function startRound(){
   F.forEach((f,i)=>Object.assign(f,{x:W*(i?.7:.3),y:0,vx:0,vy:0,kb:0,face:i?-1:1,hp:100,hpShow:100,state:'idle',t:0,
@@ -428,10 +427,10 @@ function nextRound(){
 const MENU_TEXT='Двенадцать бойцов, пять школьных миров, турнир «Четверть» и добивания. Блок + Удар — бросок. Два раза вбок — рывок. Блок в последний момент — парирование. А когда смотрит учитель — замри.';
 function showResult(title,w,text){
   $('#mTitle').innerHTML=title+'<span class="grade">5</span>'; $('#mTitle').style.color=`var(--${w?'red':'blue'})`;
-  $('#mText').textContent=text; $('#mStamp').hidden=true; menu.hidden=false;
+  $('#mText').textContent=text; menu.hidden=false;
 }
 function resetMenu(){
-  $('#mTitle').textContent='Школьный комбат'; $('#mTitle').style.color=''; $('#mStamp').hidden=false;
+  $('#mTitle').textContent='Школьный комбат'; $('#mTitle').style.color='';
   $('#mText').textContent=MENU_TEXT; $('#mAgain').hidden=true; menu.hidden=false; showLevels(false);
 }
 
