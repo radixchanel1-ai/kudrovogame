@@ -2,7 +2,7 @@
 <html lang="ru">
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no">
-<title>Драка на полях</title>
+<title>Школьный комбат</title>
 <meta name="claude:viewport-fit-sides" content="cover">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Neucha&family=Pangolin&display=swap">
 <style>
@@ -83,6 +83,23 @@ h2{margin:0;font:clamp(20px,7.5vmin,34px)/1 var(--display)}
 .keys :first-child{color:var(--blue)}
 .keys :last-child{color:var(--red)}
 .row{display:flex;flex-wrap:wrap;justify-content:center;gap:.4em 1.4em}
+/* меню полупрозрачное: за ним идёт показательный бой ботов */
+#menu{background:color-mix(in srgb,var(--paper) 72%,transparent);text-shadow:0 0 4px var(--paper),0 0 2px var(--paper)}
+.stamp{padding:.05em .55em;border:2px solid var(--red);border-radius:4px;color:var(--red);font:.8em var(--display);
+  transform:rotate(-5deg);text-shadow:none;background:var(--paper)}
+#toast{position:absolute;z-index:5;bottom:calc(var(--b)*2.3 + 26px);left:50%;padding:.2em .9em;border:2px solid var(--red);border-radius:var(--wobble);
+  background:var(--paper);color:var(--red);font:clamp(14px,4vmin,19px) var(--display);pointer-events:none;opacity:0;white-space:nowrap}
+#toast.show{animation:toast 2.8s}
+@keyframes toast{0%{opacity:0;transform:translate(-50%,-12px)}8%,85%{opacity:1;transform:translate(-50%,0) rotate(-2deg)}100%{opacity:0;transform:translate(-50%,-12px)}}
+.ladder{display:flex;flex-wrap:wrap;justify-content:center;gap:8px}
+.step{position:relative;display:grid;justify-items:center;width:7.2em;padding:2px 4px 4px;border:2px solid;border-radius:var(--wobble);
+  font:1em/1.1 var(--display);color:var(--pencil);background:var(--paper)}
+.step canvas{height:min(52px,13vmin);aspect-ratio:54/62}
+.step small{font:.6em/1.15 var(--text)}
+.step.now{color:var(--red);box-shadow:4px 4px 0 currentColor}
+.step.done::after{content:"✓";position:absolute;top:-.15em;right:.1em;color:var(--red);font:2.4em/1 var(--display);transform:rotate(-8deg)}
+.diary{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:.25em 1.6em;max-width:44em;text-align:left;font-size:.9em}
+.diary .got{color:var(--red)}
 .go{padding:.2em 1.1em;border:var(--stroke) solid;border-radius:var(--wobble);background:var(--paper);
   color:var(--red);font:1.6em var(--display);cursor:pointer}
 .go small{display:block;font:.45em/1.2 var(--text);color:var(--pencil)}
@@ -92,13 +109,13 @@ h2{margin:0;font:clamp(20px,7.5vmin,34px)/1 var(--display)}
 .go:active,.card:active{transform:scale(.95)}
 .quiet{border:0;background:none;color:var(--pencil);font:inherit;text-decoration:underline dotted;cursor:pointer}
 :focus-visible{outline:2px dashed var(--pencil);outline-offset:3px}
-#pGrid{display:grid;grid-template-columns:repeat(5,1fr);gap:6px;width:min(100%,660px)}
+#pGrid{display:grid;grid-template-columns:repeat(7,1fr);gap:5px;width:min(100%,760px)}
 .card{display:grid;justify-items:center;align-content:start;min-width:0;padding:2px 4px 4px;border:2px solid;
   border-radius:var(--wobble);background:var(--paper);color:inherit;font:1.05em/1.1 var(--display);cursor:pointer;
   text-shadow:0 0 3px var(--paper)}
 .card:nth-child(even){border-radius:18px 225px 18px 255px/255px 18px 225px 18px}
-.card canvas{height:min(62px,15vmin);aspect-ratio:54/62}
-.card small{font:.6em/1.1 var(--text);color:var(--pencil)}
+.card canvas{height:min(54px,13vmin);aspect-ratio:54/62}
+.card small{font:.55em/1.1 var(--text);color:var(--pencil)}
 .card:disabled{opacity:.5;cursor:default}
 #cover{cursor:pointer;color:var(--blue);font-family:var(--display)}
 #cover b{font-size:2em;font-weight:400}
@@ -115,20 +132,23 @@ h2{margin:0;font:clamp(20px,7.5vmin,34px)/1 var(--display)}
     <div class="pad" data-p="1"></div>
   </div>
   <div id="menu" class="sheet">
-    <h1 id="mTitle">Драка на полях</h1>
-    <p id="mText">Девять бойцов и пять школьных миров. Блок + Удар — бросок через себя. Два раза вбок — рывок. Блок в последний момент — парирование. И следи за листом: на нём всякое случается.</p>
+    <h1 id="mTitle">Школьный комбат</h1>
+    <span id="mStamp" class="stamp">издание второе, исправленное</span>
+    <p id="mText"></p>
     <div class="keys">
       <span>Синий: A D ходить · W прыжок · S блок<br>F удар · G нога · T суперсила</span>
       <span>Красный: ← → ходить · ↑ прыжок · ↓ блок<br>K удар · L нога · O суперсила</span>
     </div>
     <div class="row" id="mMain">
-      <button id="mFriend" class="go" autofocus>Вдвоём</button>
-      <button id="mBot" class="go">Против бота</button>
+      <button id="mFriend" class="go" autofocus>Вдвоём<small>на одном экране</small></button>
+      <button id="mBot" class="go">Против бота<small>три уровня</small></button>
+      <button id="mTour" class="go">Четверть<small>5 боёв, в конце Директор</small></button>
     </div>
     <div class="row" id="mLevels" hidden></div>
     <div class="row">
       <button id="mBack" class="quiet" hidden>← Назад</button>
       <button id="mAgain" class="quiet" hidden>Реванш теми же бойцами</button>
+      <button id="mDiary" class="quiet">Дневник</button>
       <button id="mSound" class="quiet">Звук: выкл</button>
     </div>
   </div>
@@ -138,6 +158,19 @@ h2{margin:0;font:clamp(20px,7.5vmin,34px)/1 var(--display)}
     <div id="wGrid" class="row" hidden></div>
     <button id="pBack" class="quiet">← Назад</button>
   </div>
+  <div id="ladder" class="sheet" hidden>
+    <h2 id="lTitle"></h2>
+    <p id="lText"></p>
+    <div id="lSteps" class="ladder"></div>
+    <button id="lGo" class="go">В бой!</button>
+    <button id="lQuit" class="quiet">Бросить четверть</button>
+  </div>
+  <div id="diary" class="sheet" hidden>
+    <h2>Дневник достижений</h2>
+    <div id="dList" class="diary"></div>
+    <button id="dBack" class="quiet">← Назад</button>
+  </div>
+  <div id="toast"></div>
   <div id="cover" class="sheet" hidden>
     <span id="cDate"></span>
     <b>Классная работа</b>
@@ -157,14 +190,18 @@ const SPEED=190, JUMP=520, GRAV=1500, TALL=112;
 // kind — суперсила, range — на каком расстоянии бот её применяет
 const CHARS=[
   {id:'vihr',name:'Вихрь',tag:'обычный пацан, кидает кляксы',sp:'Клякса',speed:1,power:1,tough:1,jump:1,size:1,kind:'blot',range:[170,900]},
-  {id:'ninja',name:'Ниндзя',tag:'быстрый, телепорт за спину',sp:'Тень',speed:1.25,power:.85,tough:1.1,jump:1.1,size:.95,kind:'blink',range:[70,900]},
-  {id:'bugai',name:'Бугай',tag:'медленный танк, топает волной',sp:'Топот',speed:.78,power:1.2,tough:.95,jump:.85,size:1.18,thick:1.6,kind:'stomp',range:[0,230]},
+  {id:'ninja',name:'Ниндзя',tag:'быстрый, телепорт за спину',sp:'Тень',speed:1.25,power:.95,tough:1.05,jump:1.1,size:.95,kind:'blink',range:[70,900]},
+  {id:'bugai',name:'Бугай',tag:'медленный танк, топает волной',sp:'Топот',speed:.78,power:1.12,tough:.98,jump:.85,size:1.18,thick:1.6,kind:'stomp',range:[0,230]},
   {id:'botan',name:'Ботаник',tag:'хилый, зато самолётики быстрые',sp:'Самолёт',speed:1.05,power:1,tough:1,jump:1,size:.95,kind:'plane',range:[150,900]},
   {id:'robot',name:'Робот',tag:'лазер через весь лист',sp:'Лазер',speed:.9,power:1.05,tough:.95,jump:.9,size:1.05,kind:'laser',range:[120,900]},
   {id:'cat',name:'Кот',tag:'двойной прыжок и бросок с когтями',sp:'Когти',speed:1.25,power:1.05,tough:.92,jump:1.1,size:.85,jumps:2,kind:'pounce',range:[90,230]},
-  {id:'mag',name:'Маг',tag:'молния с неба, не стой на месте',sp:'Молния',speed:1,power:1.05,tough:1,jump:1,size:1,kind:'bolt',range:[120,900]},
+  {id:'mag',name:'Маг',tag:'молния с неба, не стой на месте',sp:'Молния',speed:1.02,power:1.1,tough:.97,jump:1,size:1,kind:'bolt',range:[120,900]},
   {id:'pirat',name:'Пират',tag:'бросает бомбы навесом',sp:'Бомба',speed:1,power:1.05,tough:1,jump:.95,size:1.02,kind:'bomb',range:[140,340]},
-  {id:'scrib',name:'Каракуля',tag:'каждый раз новая суперсила',sp:'Хаос',secret:true,fem:true,speed:1.1,power:1.1,tough:.95,jump:1.1,size:1.05,kind:'random',range:[100,330]},
+  {id:'otl',name:'Отличник',tag:'щит-пятёрка: 4 секунды неуязвим',sp:'Пятёрка',speed:1,power:.95,tough:1,jump:1,size:.97,kind:'shield',range:[0,150]},
+  {id:'povar',name:'Повар',tag:'котлета скачет по полу',sp:'Котлета',speed:.95,power:1.05,tough:.95,jump:.95,size:1.08,kind:'cutlet',range:[120,420]},
+  {id:'scrib',name:'Каракуля',tag:'каждый раз новая суперсила',sp:'Хаос',lock:'scrib',hint:'победи бота-босса, чтобы открыть',fem:true,speed:1.1,power:1,tough:.95,jump:1.1,size:1.05,kind:'random',range:[100,330]},
+  {id:'dir',name:'Директор',tag:'вызывает к доске прямо к себе',sp:'К доске',lock:'dir',hint:'пройди Четверть, чтобы открыть',
+    speed:.85,power:1.05,tough:.93,jump:.9,size:1.22,thick:1.3,kind:'summon',range:[90,400]},
 ];
 // Миры: notes — надписи на фоне; особенность задаётся множителями jump / ev (частота событий) / gain (чернила) / dmg
 const WORLDS=[
@@ -180,7 +217,7 @@ function setWorld(i){
   for(const k in THEME) THEME[k]=rootCss.getPropertyValue('--'+k).trim();
   INK[0]=THEME.blue; INK[1]=THEME.red;
 }
-const KINDS=['blot','blink','stomp','plane','laser','pounce','bolt','bomb'];
+const KINDS=['blot','blink','stomp','plane','laser','pounce','bolt','bomb','shield','cutlet','summon'];
 
 // Бот видит то же, что игрок, и «нажимает» те же кнопки. Уровни отличаются скоростью реакции,
 // частотой решений, числом ошибок и напором; skill — как часто ловит на ошибках, idle — как часто зевает.
@@ -189,12 +226,17 @@ const LEVELS=[
   {name:'умный',note:'блокирует и наказывает',react:.19,think:.18,miss:.4,aggro:.33,guard:.22,skill:.5,idle:.18},
   {name:'босс',note:'ошибается редко',react:.15,think:.15,miss:.33,aggro:.38,guard:.26,skill:.65,idle:.14},
 ];
-let vsBot=false, botLv=1, unlocked=false, lastSetup=null;
+let vsBot=false, botLv=1, lastSetup=null;
+const unlocks=new Set(), got=new Set();   // открытые бойцы и полученные достижения
 try{
   const v=localStorage.getItem('botLv'); if(v!==null&&LEVELS[+v]) botLv=+v;
-  unlocked=localStorage.getItem('scrib')==='1';
+  if(localStorage.getItem('scrib')==='1') unlocks.add('scrib');
+  JSON.parse(localStorage.getItem('unlocks')||'[]').forEach(u=>unlocks.add(u));
+  JSON.parse(localStorage.getItem('got')||'[]').forEach(a=>got.add(a));
 }catch{}
 const save=(k,v)=>{try{localStorage.setItem(k,v)}catch{}};
+const isOpen=c=>!c.lock||unlocks.has(c.lock);
+function unlock(u){if(unlocks.has(u)) return false; unlocks.add(u); save('unlocks',JSON.stringify([...unlocks])); return true;}
 const brains=[{t:0,held:{}},{t:0,held:{}}];
 
 // Удары: замах, активная фаза, откат (сек), урон, дальность, высота удара, отброс, оглушение, прирост чернил
@@ -207,11 +249,14 @@ const ATK={
 };
 // Попадания суперсил и событий
 const SPEC={
-  blot:{dmg:18,h:-55,push:300,stun:.45,gain:0,words:['ШМЯК','ПЛЮХ']},
+  blot:{dmg:21,h:-55,push:300,stun:.45,gain:0,words:['ШМЯК','ПЛЮХ']},
   plane:{dmg:17,h:-60,push:200,stun:.35,gain:0,words:['ВЖУХ','ТЫК']},
   bomb:{dmg:20,h:-40,push:340,stun:.5,gain:0,words:['БАБАХ','БДЫЩ']},
   laser:{dmg:16,h:-70,push:240,stun:.4,gain:0,words:['ПИУ','ВЖЖЖ']},
-  bolt:{dmg:22,h:-80,push:120,stun:.6,gain:0,unblock:true,words:['ТРРАХ','ШАРАХ']},
+  cutlet:{dmg:17,h:-40,push:220,stun:.4,gain:0,words:['ЧВЯК','КОТЛЕТА']},
+  summon:{dmg:10,h:-60,push:0,stun:.8,gain:0,unblock:true,words:['К ДОСКЕ','ВЫЗОВ']},
+  deuce:{dmg:8,h:-90,push:140,stun:.3,gain:0,unblock:true,words:['ДВОЙКА','НЕ ВЕРТИСЬ']},
+  bolt:{dmg:27,h:-80,push:120,stun:.6,gain:0,unblock:true,words:['ТРРАХ','ШАРАХ']},
   wave:{dmg:15,h:-10,push:260,stun:.45,gain:0,words:['ТУДУХ','БУХ']},
   eraser:{dmg:10,h:-15,push:320,stun:.4,gain:0,unblock:true,words:['ШОРК','ВЖИК']},
 };
@@ -247,9 +292,9 @@ let ctx=cv.getContext('2d');
 let S=1, W=800, H=225, GY=210, dpr=1;
 
 const G={mode:'menu',round:1,time:60,wins:[0,0],winner:-1,t:0,clock:0,stop:0,slow:0,shake:0,cheer:0,paused:false,
-  banner:null,note:null,ev:null,evT:9,lastEv:''};
+  banner:null,note:null,ev:null,evT:9,lastEv:'',demo:false,finish:null,zoom:1,zx:400};
 const mkFighter=i=>({i,c:CHARS[i],x:0,y:0,vx:0,vy:0,kb:0,face:i?-1:1,hp:100,hpShow:100,energy:0,state:'idle',t:0,done:false,
-  stun:0,moving:false,combo:0,comboT:0,dashCd:0,inv:0,fast:0,jumps:1,boost:1,spin:0,spinV:0,
+  stun:0,moving:false,shield:0,caught:0,combo:0,comboT:0,dashCd:0,inv:0,fast:0,jumps:1,boost:1,spin:0,spinV:0,
   keys:{},buf:{},tap:{},pose:POSES.idle.map(p=>[...p])});
 const F=[mkFighter(0),mkFighter(1)];
 // shots — всё, что летит и бьёт; items — бонусы; pending — удары кадра применяются разом, чтобы встречные засчитались обоим
@@ -283,7 +328,7 @@ const keyFor=c=>KEYMAP[c]&&(vsBot?[0,KEYMAP[c][1]]:KEYMAP[c]);
 const releaseAll=()=>[0,1].forEach(p=>Object.keys(ACTIONS).forEach(a=>press(p,a,false)));
 addEventListener('keydown',e=>{
   if(e.code==='Escape'||e.code==='KeyP') return togglePause();
-  const m=keyFor(e.code); if(!m||G.mode==='menu') return;
+  const m=keyFor(e.code); if(!m||G.mode==='menu'||G.demo) return;
   e.preventDefault(); if(!e.repeat) press(...m,true);
 });
 addEventListener('keyup',e=>{const m=keyFor(e.code); if(m) press(...m,false);});
@@ -291,7 +336,7 @@ $('.pads').addEventListener('touchstart',e=>e.preventDefault(),{passive:false});
 stage.addEventListener('contextmenu',e=>e.preventDefault());
 
 function togglePause(on=!G.paused){
-  if(G.mode==='menu') return;
+  if(G.mode==='menu'||G.demo) return;
   G.paused=on; cover.hidden=!on; releaseAll();
 }
 $('#pause').onpointerdown=()=>togglePause(true);
@@ -302,7 +347,7 @@ $('#cDate').textContent=new Date().toLocaleDateString('ru-RU',{day:'numeric',mon
 // ---------- звук (по умолчанию выключен: урок же) ----------
 let ac=null, soundOn=false;
 function beep(freq,dur,type='square'){
-  if(!soundOn) return;
+  if(!soundOn||G.demo) return;
   ac??=new AudioContext();
   const o=ac.createOscillator(), g=ac.createGain(), t=ac.currentTime;
   o.type=type; o.frequency.setValueAtTime(freq,t); o.frequency.exponentialRampToValueAtTime(freq/3,t+dur);
@@ -314,22 +359,31 @@ $('#mSound').onclick=e=>{soundOn=!soundOn; e.target.textContent='Звук: '+(so
 // ---------- ход матча ----------
 const say=(text,color)=>G.banner={text,color,t:0};
 function note(text){G.note={text,t:0};}
-const JOKES=['Учитель вышел из класса','Последняя парта, потише!','Кто проиграет — моет доску','Только не по тетради!',
+const JOKES=['Учитель вышел из класса','Кто списывал — шаг вперёд','Сменка где?','Не бегать по коридору!','Последняя парта, потише!','Кто проиграет — моет доску','Только не по тетради!',
   'Дневники на стол','Контрольная отменяется','Звонок для учителя'];
-function startMatch(withBot,chars,wi=0){
-  lastSetup=[withBot,chars,wi]; setWorld(wi);
+function setupMatch(withBot,chars,wi){
+  setWorld(wi); G.demo=false;
   vsBot=withBot; stage.classList.toggle('vsbot',vsBot);
   NAME[1]=vsBot?'Бот':'Красный'; DATIVE[1]=vsBot?'Боту':'Красному';
   G.round=1; G.wins=[0,0];
   F.forEach((f,i)=>{f.energy=0; f.c=CHARS[chars[i]]; BTN[i].s.firstChild.textContent=f.c.sp;});
-  menu.hidden=pickSheet.hidden=true; startRound();
+  startRound();
+}
+function startMatch(withBot,chars,wi=0){
+  lastSetup=[withBot,chars,wi]; setupMatch(withBot,chars,wi);
+  document.querySelectorAll('.sheet').forEach(el=>el.hidden=true);
+}
+// показательный бой двух ботов за меню
+function startDemo(){
+  const pool=available();
+  setupMatch(false,[pick(pool),pick(pool)],Math.random()*WORLDS.length|0); G.demo=true;
 }
 function startRound(){
   F.forEach((f,i)=>Object.assign(f,{x:W*(i?.7:.3),y:0,vx:0,vy:0,kb:0,face:i?-1:1,hp:100,hpShow:100,state:'idle',t:0,
-    combo:0,comboT:0,dashCd:0,inv:0,fast:0,boost:1,spin:0,buf:{}}));
+    combo:0,comboT:0,dashCd:0,inv:0,fast:0,boost:1,spin:0,shield:0,caught:0,buf:{}}));
   brains.forEach(b=>b.t=.3); releaseAll();
   shots=[]; items=[]; G.ev=null; G.evT=(7+Math.random()*5)*(world.ev||1);
-  G.mode='intro'; G.t=0; G.time=60; G.winner=-1;
+  G.mode='intro'; G.t=0; G.time=60; G.winner=-1; G.finish=null;
   say('Раунд '+G.round,THEME.pencil); note(pick(JOKES));
 }
 function endRound(w,text){
@@ -337,23 +391,109 @@ function endRound(w,text){
   G.mode='over'; G.t=0; G.winner=w; G.ev=null;
   if(w>=0) G.wins[w]++;
   say(w<0?'Ничья!':text,THEME.red);
+  // решающий нокаут — можно сделать добивание
+  G.finish=w>=0&&G.wins[w]===2&&text==='Нокаут!'?{stage:'offer',t:0,w}:null;
+}
+function updateFinish(fin,dt){
+  fin.t+=dt;
+  const w=F[fin.w], auto=G.demo||(vsBot&&fin.w===1);
+  if(fin.stage==='offer'){
+    if(w.buf.s>0||(auto&&fin.t>.9)){
+      Object.assign(fin,{stage:'play',t:0,type:pick(['trash','erase','plane'])});
+      w.buf.s=0; setState(w,'kick'); G.shake=12; beep(200,.4,'sawtooth'); achieve('fin',fin.w);
+    }else if(fin.t>2.4){G.finish=null; G.t=2.6;}
+  }else{
+    if(fin.type==='erase'&&fin.t<1.4&&Math.random()<.5) puff(F[1-fin.w].x+(Math.random()-.5)*50,GY-30-Math.random()*70);
+    if(fin.t>2.7){G.finish=null; G.t=2.6;}
+  }
 }
 function nextRound(){
   const w=G.winner;
   if(w<0||G.wins[w]<2){G.round++; return startRound();}
-  G.mode='menu'; releaseAll();
+  if(G.demo) return startDemo();
+  releaseAll();
+  if(!vsBot||w===0) achieve('win');
+  if(T.on) return tourResult(w===0);
   const c=F[w].c, next=vsBot&&w===0&&LEVELS[botLv+1];
   let extra=next?` Теперь попробуй бота «${next.name}».`:'';
-  if(vsBot&&w===0&&botLv===2&&!unlocked){
-    unlocked=true; save('scrib','1');
-    extra=' Босс повержен! Открыт секретный боец — Каракуля.';
+  if(vsBot&&w===0&&botLv===2){
+    achieve('boss');
+    if(unlock('scrib')) extra=' Босс повержен! Открыт секретный боец — Каракуля.';
   }
-  $('#mTitle').innerHTML=`${c.name} победил${c.fem?'а':''}!<span class="grade">5</span>`;
-  $('#mTitle').style.color=INK[w];
-  $('#mText').textContent=`Счёт ${G.wins[w]}:${G.wins[1-w]}. ${DATIVE[1-w]} двойка в дневник и право на реванш.`+extra;
+  showResult(`${c.name} победил${c.fem?'а':''}!`,w,`Счёт ${G.wins[w]}:${G.wins[1-w]}. ${DATIVE[1-w]} двойка в дневник и право на реванш.`+extra);
   $('#mAgain').hidden=false;
-  menu.hidden=false; showLevels(vsBot);   // после матча с ботом сразу выбор уровня: реванш или посложнее
+  showLevels(vsBot);   // после матча с ботом сразу выбор уровня: реванш или посложнее
+  startDemo();
 }
+const MENU_TEXT='Двенадцать бойцов, пять школьных миров, турнир «Четверть» и добивания. Блок + Удар — бросок. Два раза вбок — рывок. Блок в последний момент — парирование. А когда смотрит учитель — замри.';
+function showResult(title,w,text){
+  $('#mTitle').innerHTML=title+'<span class="grade">5</span>'; $('#mTitle').style.color=`var(--${w?'red':'blue'})`;
+  $('#mText').textContent=text; $('#mStamp').hidden=true; menu.hidden=false;
+}
+function resetMenu(){
+  $('#mTitle').textContent='Школьный комбат'; $('#mTitle').style.color=''; $('#mStamp').hidden=false;
+  $('#mText').textContent=MENU_TEXT; $('#mAgain').hidden=true; menu.hidden=false; showLevels(false);
+}
+
+// ---------- достижения ----------
+const ACH={
+  win:['Первая пятёрка','выиграть матч'], combo:['Комбо-мастер','сделать комбо ×5'],
+  parry:['Реакция','парировать удар'], wall:['От стенки','отбросить соперника от стены'],
+  fin:['Добивание','добить соперника в конце матча'], deuce:['Спалился','получить двойку от учителя'],
+  boss:['Гроза босса','победить бота-босса'], tour:['Отличник четверти','пройти Четверть'],
+};
+const human=i=>!G.demo&&(!vsBot||i===0);
+function achieve(k,i){
+  if(G.demo||(i!==undefined&&!human(i))||got.has(k)) return;
+  got.add(k); save('got',JSON.stringify([...got])); updDiary();
+  toast('★ Достижение: '+ACH[k][0]);
+}
+function toast(text){const t=$('#toast'); t.textContent=text; t.classList.remove('show'); void t.offsetWidth; t.classList.add('show');}
+const updDiary=()=>$('#mDiary').textContent=`Дневник: ${got.size} из ${Object.keys(ACH).length}`;
+$('#mDiary').onclick=()=>{
+  menu.hidden=true; $('#diary').hidden=false;
+  $('#dList').innerHTML=Object.entries(ACH).map(([k,[n,d]])=>`<span class="${got.has(k)?'got':''}">${got.has(k)?'✓':'○'} ${n} — ${d}</span>`).join('');
+};
+$('#dBack').onclick=()=>{$('#diary').hidden=true; menu.hidden=false;};
+
+// ---------- Четверть: пять боёв подряд, в конце Директор ----------
+const T={on:false,step:0,me:0,foes:[],lv0:1};
+const TOUR_LV=[0,1,1,2,2], TOUR_WORLD=[0,1,3,4,2];
+function startTour(me){
+  const pool=available().filter(i=>i!==me&&CHARS[i].id!=='dir'), foes=[];
+  while(foes.length<4){const i=pick(pool); if(!foes.includes(i)) foes.push(i);}
+  Object.assign(T,{on:true,step:0,me,foes:[...foes,CHARS.findIndex(c=>c.id==='dir')],lv0:botLv});
+  showLadder('Четверть началась','Пять уроков, пять соперников, каждый следующий сильнее. В конце тебя ждёт кое-кто особенный.','В бой!');
+}
+function showLadder(title,text,go){
+  document.querySelectorAll('.sheet').forEach(el=>el.hidden=true);
+  $('#ladder').hidden=false; $('#lTitle').textContent=title; $('#lText').textContent=text; $('#lGo').textContent=go;
+  $('#lSteps').innerHTML='';
+  T.foes.forEach((fi,n)=>{
+    const secret=n===4&&T.step<4, d=document.createElement('div');
+    d.className='step'+(n<T.step?' done':n===T.step?' now':'');
+    d.innerHTML=`<canvas width="108" height="124"></canvas><span>${secret?'???':CHARS[fi].name}</span><small>${WORLDS[TOUR_WORLD[n]].name}<br>бот ${LEVELS[TOUR_LV[n]].name}</small>`;
+    $('#lSteps').append(d); portrait(d.firstChild,secret?null:CHARS[fi],1);
+  });
+  $('#lGo').focus();
+}
+function tourResult(won){
+  if(won) T.step++;
+  startDemo();
+  if(T.step===5){
+    T.on=false; botLv=T.lv0; achieve('tour');
+    const fresh=unlock('dir');
+    resetMenu();
+    showResult('Отличник четверти!',0,'Все пять уроков пройдены, Директор повержен.'+(fresh?' Теперь Директор открыт как боец.':''));
+    return;
+  }
+  const f=T.foes[T.step];
+  showLadder(won?`Урок ${T.step} пройден!`:'Двойка за урок',
+    T.step===4?'Последний урок. Тебя вызывает Директор!':won?`Дальше: ${CHARS[f].name}, ${WORLDS[TOUR_WORLD[T.step]].name.toLowerCase()}.`:'Не беда, попробуй этот урок ещё раз.',
+    won?'Следующий урок':'Ещё раз');
+}
+$('#lGo').onclick=()=>{botLv=TOUR_LV[T.step]; startMatch(true,[T.me,T.foes[T.step]],TOUR_WORLD[T.step]);};
+$('#lQuit').onclick=()=>{T.on=false; botLv=T.lv0; $('#ladder').hidden=true; resetMenu();};
 
 // ---------- меню: режим → уровень бота → бойцы ----------
 const levelBtns=LEVELS.map((L,i)=>{
@@ -368,6 +508,7 @@ function showLevels(on){
   (on?levelBtns[botLv]:$('#mBot')).focus();
 }
 $('#mFriend').onclick=()=>chooseChars(false);
+$('#mTour').onclick=()=>chooseChars(true,true);
 $('#mBot').onclick=()=>showLevels(true);
 $('#mBack').onclick=()=>showLevels(false);
 $('#mAgain').onclick=()=>startMatch(...lastSetup);
@@ -378,10 +519,10 @@ const cards=[...CHARS,null].map((c,idx)=>{                 // последняя
   b.onclick=()=>choose(idx);
   $('#pGrid').append(b); return b;
 });
-let picks=[], pickBot=false;
-const available=()=>CHARS.map((c,i)=>i).filter(i=>!CHARS[i].secret||unlocked);
-function chooseChars(withBot){
-  pickBot=withBot; picks=[]; menu.hidden=true; pickSheet.hidden=false;
+let picks=[], pickBot=false, pickTour=false;
+const available=()=>CHARS.map((c,i)=>i).filter(i=>isOpen(CHARS[i]));
+function chooseChars(withBot,tour=false){
+  pickBot=withBot; pickTour=tour; picks=[]; menu.hidden=true; pickSheet.hidden=false;
   $('#pGrid').hidden=false; $('#wGrid').hidden=true; askPick();
 }
 [...WORLDS,null].forEach((w,i)=>{                          // последняя кнопка — случайный мир
@@ -399,15 +540,16 @@ function askPick(){
   $('#pTitle').textContent=`${i?'Красный':'Синий'}, выбирай бойца`;
   pickSheet.style.color=INK[i];
   cards.forEach((b,idx)=>{
-    const c=CHARS[idx], locked=c?.secret&&!unlocked, [cvs,nm,tag]=b.children;
+    const c=CHARS[idx], locked=c&&!isOpen(c), [cvs,nm,tag]=b.children;
     b.disabled=!!locked;
     nm.textContent=!c?'Случайный':locked?'???':c.name;
-    tag.textContent=!c?'пусть решит судьба':locked?'победи босса, чтобы открыть':c.tag;
+    tag.textContent=!c?'пусть решит судьба':locked?c.hint:c.tag;
     portrait(cvs,locked?null:c,i);
   });
 }
 function choose(idx){
   picks.push(CHARS[idx]?idx:pick(available()));
+  if(pickTour) return startTour(picks[0]);
   if(!pickBot&&picks.length<2) return askPick();
   if(pickBot) picks.push(pick(available()));
   askWorld();
@@ -426,11 +568,12 @@ function strike(f,o,a){
 // att — кто ударил (null у событий вроде ластика)
 function hit(v,dir,a,att,mult=1){
   if(v.state==='ko'||G.mode!=='fight'||v.inv>0) return;
+  if(v.shield>0){word('Пятёрка!',v.x,GY+v.y-95,INK[v.i]); v.kb=dir*120; beep(900,.06,'triangle'); return;}
   const melee='wind' in a, heavy=a.dmg>8;
   const blocked=!a.unblock&&v.state==='block'&&v.face===-dir;
   const hx=v.x-dir*14, hy=GY+v.y+a.h;
   if(blocked&&v.t<.12){                            // блок в последний момент — парирование
-    word('Парировал!',hx,hy-22,INK[v.i]); v.energy=Math.min(100,v.energy+15); G.stop=.08; beep(700,.1,'triangle');
+    word('Парировал!',hx,hy-22,INK[v.i]); achieve('parry',v.i); v.energy=Math.min(100,v.energy+15); G.stop=.08; beep(700,.1,'triangle');
     if(melee&&att){att.stun=.55; att.kb=-dir*220; att.combo=0; setState(att,'hit');}
     return;
   }
@@ -441,6 +584,7 @@ function hit(v,dir,a,att,mult=1){
     att.combo=att.comboT>0?att.combo+1:1; att.comboT=1.3;
     dmg*=1+Math.min(4,att.combo-1)*.12;
     if(att.combo>=3) word('комбо ×'+att.combo,hx,hy-50,THEME.red);
+    if(att.combo>=5) achieve('combo',att.i);
   }
   v.hp=Math.max(0,v.hp-Math.ceil(dmg));
   v.kb=dir*a.push*(blocked?.4:1);
@@ -480,10 +624,17 @@ function special(f,o){
     puff(f.x,GY+f.y-50); f.boost=2.4; setState(f,'punch');
   }
   if(kind==='pounce'){f.vy=-380; f.vx=d*430; setState(f,'pounce');}
+  if(kind==='shield'){f.shield=4; f.hp=Math.min(100,f.hp+10); word('Пятёрка!',f.x,GY+f.y-110,INK[i]);}
+  if(kind==='cutlet') shots.push({kind,i,x:f.x+d*40,y:f.y-70,vx:d*300,vy:-260});
+  if(kind==='summon'){                              // вызов к доске: притянуть соперника к себе
+    const dist=Math.abs(o.x-f.x);
+    shots.push({kind:'chalk',i,x:f.x+d*20,x2:o.x,y:f.y-70});
+    if(dist<420){hit(o,d,SPEC.summon,f); if(o.state==='hit') o.kb=-d*Math.max(0,dist-50)*7;}
+  }
 }
 function updateFighter(f,o,dt,live){
   const c=f.c;
-  f.t+=dt; f.comboT-=dt; f.dashCd-=dt; f.inv-=dt; f.fast-=dt;
+  f.t+=dt; f.comboT-=dt; f.dashCd-=dt; f.inv-=dt; f.fast-=dt; f.shield-=dt;
   for(const a in f.buf) f.buf[a]-=dt;
   const k=live?f.keys:{}, want=a=>live&&f.buf[a]>0&&!(f.buf[a]=0);
   const ground=f.y>=0&&f.vy>=0, a=ATK[f.state];
@@ -517,7 +668,12 @@ function updateFighter(f,o,dt,live){
   if(f.y>=0){f.y=0; f.vy=0;}
   if(f.state==='ko') f.spin=f.y<0?f.spin+f.spinV*dt:0;
   f.kb*=Math.exp(-7*dt);
-  f.x=clamp(f.x+(f.vx+f.kb)*dt,24,W-24);
+  const nx=f.x+(f.vx+f.kb)*dt;
+  if((nx<24||nx>W-24)&&f.state==='hit'&&Math.abs(f.kb)>200){   // отлетел в стену — отскок
+    f.kb*=-.55; f.vy=Math.min(f.vy,-220); f.stun+=.15; G.shake=7;
+    word('ОТ СТЕНЫ!',f.x,GY+f.y-80,THEME.pencil); puff(f.x,GY+f.y-40); achieve('wall',1-f.i);
+  }
+  f.x=clamp(nx,24,W-24);
 }
 const poseName=f=>f.state!=='idle'?f.state:f.y<0?'jump':f.moving?(Math.floor(G.clock*9)%2?'walkA':'walkB'):'idle';
 
@@ -528,6 +684,7 @@ function botUpdate(p,dt){
   if(G.mode!=='fight') return hold({});
   if((B.t-=dt)>0) return;
   B.t=L.think*(.6+Math.random()*.8);
+  if(G.ev?.type==='teacher'&&G.ev.t<3.25&&Math.random()>L.miss*.4) return hold({});   // учитель смотрит — замереть
 
   const chance=x=>Math.random()<x, tap=a=>me.buf[a]=.15, sharp=!chance(L.miss), skilled=chance(L.skill);
   if(chance(L.idle)) return hold({});                        // зевнул: стоит и ничего не делает
@@ -536,7 +693,7 @@ function botUpdate(p,dt){
   const inFront=o.face*(me.x-o.x)>0;
   const threat=oa&&!o.done&&o.t>=L.react&&(o.state==='cast'?o.c.kind==='laser'&&inFront:o.face*(me.x-o.x)<oa.reach+30);
   const foe=s=>s.i!==p, coming=s=>Math.sign(me.x-s.x)===Math.sign(s.vx), near=(s,r)=>Math.abs(s.x-me.x)<r;
-  const shot=shots.find(s=>['blot','plane','bomb'].includes(s.kind)&&foe(s)&&coming(s)&&near(s,200));
+  const shot=shots.find(s=>['blot','plane','bomb','cutlet'].includes(s.kind)&&foe(s)&&coming(s)&&near(s,200));
   const low=shots.find(s=>(s.kind==='eraser'||s.kind==='wave')&&foe(s)&&coming(s)&&near(s,100));
   const bolt=shots.find(s=>s.kind==='bolt'&&foe(s)&&!s.done&&near(s,44));
   const gift=items.find(g=>Math.abs(g.x-me.x)<Math.abs(g.x-o.x)+60);
@@ -553,6 +710,7 @@ function botUpdate(p,dt){
     const bd=Math.abs(shot.x-me.x);
     if(shot.kind==='blot'&&ground&&bd>90&&bd<150&&chance(.5)) tap('u'); else h.b=true;
   }
+  else if(o.shield>.3&&sharp&&!cornered) h[back]=true;      // у соперника щит — переждать
   else if(threat&&sharp&&ground){                            // соперник замахнулся — блок или рывок назад
     if(o.state!=='cast'&&!cornered&&chance(aggro*.25)) tap('d'+back); else h.b=true;
   }
@@ -587,10 +745,19 @@ const EVENTS={
   moon(){G.ev={type:'moon',t:7}; return 'Невесомость!';},
   bell(){G.ev={type:'bell',t:6}; return 'Перемена! Всё быстрее';},
   dark(){G.ev={type:'dark',t:5.5}; return 'Выключили свет';},
+  teacher(){G.ev={type:'teacher',t:4.2}; return 'Тихо! Учитель идёт…';},
 };
 const GIFT={heal:['5','+20 здоровья'],ink:['Ш','Шпаргалка: чернила полные'],fast:['»','Энергетик: скорость']};
 function updateEvents(dt){
   if(G.ev&&(G.ev.t-=dt)<=0) G.ev=null;
+  if(G.ev?.type==='teacher'&&G.ev.t<3){            // учитель смотрит: кто шевелится — получает двойку
+    if(!G.ev.look){G.ev.look=1; note('Учитель смотрит! Замри!');}
+    for(const f of F){
+      f.caught-=dt;
+      const busy=(f.state==='idle'&&f.moving)||ATK[f.state]||f.y<-4;
+      if(busy&&f.caught<=0&&f.state!=='ko'){f.caught=1; hit(f,f.x<W/2?-1:1,SPEC.deuce,null); achieve('deuce',f.i);}
+    }
+  }
   if((G.evT-=dt)<=0){
     const type=pick(Object.keys(EVENTS).filter(e=>e!==G.lastEv));
     G.lastEv=type; G.evT=(10+Math.random()*6)*(world.ev||1); note(EVENTS[type]()); beep(880,.15,'sine');
@@ -624,6 +791,12 @@ function updateShots(dt){
         if(Math.abs(s.x-o.x)<60&&o.y>-80) hit(o,Math.sign(o.x-s.x)||dir,spec,own);
         return false;
       case 'laser': return s.t<.2;
+      case 'chalk': return s.t<.35;
+      case 'cutlet':
+        s.vy+=900*dt; s.x+=s.vx*dt; s.y+=s.vy*dt;
+        if(s.y>=-8){s.y=-8; s.n=(s.n||0)+1; s.vy=-420*.85**s.n; beep(300,.05); if(s.n>3) return false;}
+        if(Math.abs(s.x-o.x)<22&&inBody(s.y,o)&&o.state!=='ko'){hit(o,dir,spec,own); splash(s.x,GY+s.y,dir,THEME.pencil,14); return false;}
+        return s.x>-30&&s.x<W+30;
       case 'bolt':
         if(!s.done&&s.t>=.75){
           s.done=true; G.shake=10; beep(60,.3,'sawtooth');
@@ -669,10 +842,14 @@ function update(dt){
   }
   if(G.mode==='over'){
     const w=F[G.winner];
-    if(w&&G.t>.8&&w.state==='idle'&&w.y>=0) setState(w,'win');
-    if(G.t>2.6) nextRound();
+    if(G.finish) updateFinish(G.finish,dt);
+    else{
+      if(w&&G.t>.8&&w.state==='idle'&&w.y>=0) setState(w,'win');
+      if(G.t>2.6) nextRound();
+    }
   }
-  if(vsBot) botUpdate(1,dt);
+  if(vsBot||G.demo) botUpdate(1,dt);
+  if(G.demo) botUpdate(0,dt);
   F.forEach((f,i)=>updateFighter(f,F[1-i],dt,live));
   pending.splice(0).forEach(fn=>fn());
 
@@ -691,7 +868,7 @@ function update(dt){
     const target=POSES[poseName(f)];
     f.pose.forEach((p,j)=>{p[0]+=(target[j][0]-p[0])*ease; p[1]+=(target[j][1]-p[1])*ease;});
     f.hpShow+=(f.hp-f.hpShow)*Math.min(1,dt*4);
-    BTN[i].s.classList.toggle('ready',f.energy>=100);
+    BTN[i].s.classList.toggle('ready',f.energy>=100||G.finish?.stage==='offer'&&G.finish.w===i);
   });
 }
 
@@ -788,9 +965,28 @@ const LOOK={
     line([x-15*z,y-7*z],[x,y-18*z],[x+15*z,y-7*z],[x-15*z,y-7*z]);
     line([x-d*10*z,y-5*z],[x+d*10*z,y-z]); dot(x+d*5*z,y-z,4*z);
   },
+  otl(x,y,d,z,q){
+    ctx.beginPath(); ctx.arc(x,y-2*z,12*z,Math.PI*1.05,Math.PI*1.95); ctx.stroke(); line([x+d*2*z,y-13*z],[x-d*4*z,y-6*z]);
+    const [nx,ny]=q[1]; line([nx-6,ny-4],[nx+6,ny+2],[nx+6,ny-4],[nx-6,ny+2],[nx-6,ny-4]);
+  },
+  povar(x,y,d,z){
+    ctx.fillStyle=THEME.paper;
+    for(const [ox,oy,r] of [[-7,-17,7],[7,-17,7],[0,-23,8]]){ctx.beginPath(); ctx.arc(x+ox*z,y+oy*z,r*z,0,7); ctx.fill(); ctx.stroke();}
+    ctx.fillRect(x-9*z,y-16*z,18*z,6*z); wobblyRect(x-9*z,y-16*z,18*z,6*z); ctx.fillStyle=ctx.strokeStyle;
+    line([x+d*z,y+5*z],[x+d*6*z,y+3*z],[x+d*11*z,y+6*z]);
+  },
+  dir(x,y,d,z,q){
+    ctx.lineWidth=1.6; ctx.beginPath(); ctx.arc(x-d*3*z,y-5*z,4*z,Math.PI,Math.PI*1.6); ctx.stroke(); ctx.lineWidth=3.4;
+    line([x+d*z,y+5*z],[x+d*11*z,y+4*z]); ctx.lineWidth=2.4;
+    const [nx,ny]=q[1], [px,py]=q[2], tx=nx+(px-nx)*.45, ty=ny+(py-ny)*.45;
+    line([nx-3,ny+2],[tx,ty],[nx+3,ny+2]);
+  },
   scrib(x,y,d,z){for(let n=0;n<3;n++){ctx.beginPath(); ctx.arc(x+jit(4),y+jit(4),(11+jit(4))*z,0,7); ctx.stroke();} dot(x-d*2*z,y-2*z,1.8);},
 };
 function drawFighter(f,gy=GY){
+  const fin=G.finish, doom=fin?.stage==='play'&&f.i!==fin.w&&gy===GY?fin:null;
+  const fade=doom?.type==='erase'?clamp(1-doom.t/1.4,0,1):1, shrink=doom&&doom.type!=='erase'?clamp(1-doom.t/.6,0,1)*.8+.2:1;
+  if(!fade||(doom&&doom.type!=='erase'&&doom.t>=.6)) return;
   const c=f.c, z=c.size, ink=INK[f.i], fy=gy+f.y, d=f.face, rage=f.hp<=25&&f.hp>0;
   const breathe=f.state==='idle'?Math.sin(G.clock*5+f.i*2)*1.2:0, amp=rage?2.6:1.3;
   const q=f.pose.map(([x,y],j)=>[f.x+x*z*d+jit(amp),fy+(y+(j<7?breathe:0))*z+jit(amp)]);
@@ -800,8 +996,10 @@ function drawFighter(f,gy=GY){
   const sw=18*z*(1-Math.min(1,-f.y/140)*.6); line([f.x-sw,gy+4],[f.x+sw,gy+4]); ctx.globalAlpha=1;
 
   ctx.save();
+  if(shrink<1){ctx.translate(f.x,fy-50); ctx.rotate(doom.t*9); ctx.scale(shrink,shrink); ctx.translate(-f.x,-(fy-50));}
+  ctx.globalAlpha=fade;
   if(f.state==='ko'&&f.y<0){ctx.translate(f.x,fy-40); ctx.rotate(f.spin); ctx.translate(-f.x,-(fy-40));}
-  if(f.inv>0) ctx.globalAlpha=.45;
+  if(f.inv>0) ctx.globalAlpha=.45*fade;
   ctx.strokeStyle=ink; ctx.fillStyle=THEME.paper;
   ctx.lineWidth=(f.state==='hit'&&f.t<.1?6.5:4)*(c.thick||1);
   line(q[1],q[2]); line(q[1],q[3],q[5]); line(q[1],q[4],q[6]); line(q[2],q[7],q[9]); line(q[2],q[8],q[10]);
@@ -813,6 +1011,12 @@ function drawFighter(f,gy=GY){
   if(f.state==='ko'){line([ex-3,ey-3],[ex+3,ey+3]); line([ex-3,ey+3],[ex+3,ey-3]);}
   else if(c.id!=='pirat') dot(ex,ey,1.8);
   if(rage) for(const s of [-1,1]) line([hx+s*16*z,hy-16*z],[hx+s*21*z,hy-22*z],[hx+s*18*z,hy-25*z],[hx+s*24*z,hy-31*z]);
+  if(f.shield>0&&(f.shield>1||Math.floor(G.clock*10)%2)){   // щит-пятёрка
+    ctx.strokeStyle=THEME.red; ctx.lineWidth=2.4; ctx.setLineDash([7,5]);
+    ctx.beginPath(); ctx.ellipse(f.x,fy-55*z,40*z,68*z,0,0,7); ctx.stroke(); ctx.setLineDash([]);
+    ctx.fillStyle=THEME.red; ctx.font=`22px ${FONT}`; ctx.textAlign='center'; ctx.fillText('5',f.x+d*44*z,fy-110*z);
+    ctx.strokeStyle=ink;
+  }
   if(f.fast>0) for(const s of [0,1,2]) line([f.x-d*(22+s*7),fy-30-s*22],[f.x-d*(40+s*7),fy-30-s*22]);
   ctx.restore();
 }
@@ -847,6 +1051,14 @@ function drawShots(){
         line(...pts,[s.x,GY]);
       }
     }
+    if(s.kind==='cutlet'){
+      ctx.beginPath(); ctx.ellipse(s.x,y,11,7,s.t*8,0,7); ctx.fill();
+      ctx.strokeStyle=THEME.paper; ctx.lineWidth=1.5; line([s.x-5,y-2],[s.x+4,y-3]); line([s.x-3,y+2],[s.x+5,y+1]);
+    }
+    if(s.kind==='chalk'){
+      ctx.globalAlpha=1-s.t/.35; ctx.lineWidth=3; ctx.setLineDash([10,6]);
+      line([s.x,y],[(s.x+s.x2)/2,y-18+jit(4)],[s.x2,y]); ctx.setLineDash([]);
+    }
     if(s.kind==='wave'){ctx.globalAlpha=1-s.t/.65; ctx.lineWidth=3; line([s.x,GY],[s.x+dir*9,GY-12],[s.x,GY-22],[s.x+dir*7,GY-32]);}
     if(s.kind==='eraser'){
       ctx.fillStyle=THEME.margin; ctx.fillRect(s.x-32,GY-26,64,26);
@@ -874,7 +1086,67 @@ function drawEffects(){
     ctx.strokeText(w.text,0,0); ctx.fillStyle=w.color; ctx.fillText(w.text,0,0); ctx.restore();
   }
 }
+// добивание: мир вокруг темнеет, проигравший стирается, летит в мусорку или улетает самолётиком
+function drawFinish(){
+  const fin=G.finish; if(fin?.stage!=='play') return;
+  const v=F[1-fin.w], t=fin.t, cx=v.x, cy=GY-50, away=Math.sign(v.x-F[fin.w].x)||1;
+  ctx.globalAlpha=Math.min(.5,t*2); ctx.fillStyle=THEME.night;
+  ctx.beginPath(); ctx.rect(-300,-300,W+600,H+600); ctx.moveTo(cx+95,cy); ctx.arc(cx,cy,95,0,7); ctx.fill('evenodd');
+  ctx.globalAlpha=1; ctx.lineWidth=2.4;
+  if(fin.type==='erase'&&t<1.6){
+    const ex=cx+Math.sin(t*16)*38, ey=cy-30+Math.min(1,t/1.4)*55;
+    ctx.save(); ctx.translate(ex,ey); ctx.rotate(-.4);
+    ctx.fillStyle=THEME.margin; ctx.fillRect(-30,-13,60,26); ctx.strokeStyle=THEME.pencil; wobblyRect(-30,-13,60,26); ctx.restore();
+  }
+  if(fin.type==='trash'){
+    const bx=clamp(cx+away*170,60,W-60);
+    ctx.strokeStyle=THEME.pencil; ctx.fillStyle=THEME.paper;
+    ctx.beginPath(); ctx.moveTo(bx-26,GY-62); ctx.lineTo(bx+26,GY-62); ctx.lineTo(bx+19,GY); ctx.lineTo(bx-19,GY); ctx.closePath(); ctx.fill(); ctx.stroke();
+    for(const k of [-9,0,9]) line([bx+k,GY-54],[bx+k*.8,GY-6]);
+    if(t>.6){
+      const p=Math.min(1,(t-.6)/.8), x=cx+(bx-cx)*p, y=cy+(GY-70-cy)*p-Math.sin(p*Math.PI)*130;
+      if(p<1){ctx.strokeStyle=INK[v.i]; for(let n=0;n<3;n++){ctx.beginPath(); ctx.arc(x+jit(3),y+jit(3),12+jit(3),0,7); ctx.stroke();}}
+    }
+  }
+  if(fin.type==='plane'&&t>.6){
+    const p=(t-.6)/1.6, x=cx+away*p*p*W, y=cy-p*230+Math.sin(p*12)*10;
+    ctx.strokeStyle=INK[v.i]; line([x+away*22,y],[x-away*16,y-11],[x-away*8,y],[x-away*16,y+9],[x+away*22,y]);
+  }
+}
+function drawTeacher(){
+  const e=G.ev; if(e?.type!=='teacher') return;
+  const k=Math.min(1,(4.2-e.t)/.5,e.t/.4), x=W+46-k*100, y=128, look=e.t<3;
+  ctx.fillStyle=THEME.paper; ctx.strokeStyle=THEME.pencil; ctx.lineWidth=3;
+  ctx.beginPath(); ctx.arc(x+jit(1),y+jit(1),58,0,7); ctx.fill(); ctx.stroke();
+  ctx.beginPath(); ctx.arc(x+10,y-62,18,0,7); ctx.fill(); ctx.stroke();            // пучок
+  line([x-56,y-18],[x-20,y-40],[x+30,y-46]);
+  const mid=(F[0].x+F[1].x)/2, px=clamp((mid-x)/150,-1,1)*5;
+  for(const gx of [-34,-6]){
+    ctx.beginPath(); ctx.arc(x+gx,y-6,12,0,7); ctx.stroke();
+    if(look){ctx.fillStyle=THEME.pencil; dot(x+gx+px,y-4,3.5);} else line([x+gx-6,y-4],[x+gx+6,y-4]);
+  }
+  line([x-22,y-6],[x-18,y-6]);
+  line([x-30,y+26],[x-12,look?y+24:y+28]);
+  if(look){ctx.fillStyle=THEME.red; ctx.font=`40px ${FONT}`; ctx.textAlign='center'; ctx.fillText('!',x-70,y-30);}
+}
 function drawOverlay(){
+  drawTeacher();
+  const fin=G.finish;
+  ctx.textAlign='center'; ctx.strokeStyle=THEME.paper;
+  if(fin?.stage==='offer'&&fin.t>1&&Math.floor(fin.t*4)%2){
+    ctx.font=`26px ${FONT}`; ctx.lineWidth=6;
+    const t=(G.demo||vsBot&&fin.w)?'ДОБЕЙ!':'ДОБЕЙ! Жми суперсилу';
+    ctx.strokeText(t,W/2,H*.36); ctx.fillStyle=THEME.red; ctx.fillText(t,W/2,H*.36);
+  }
+  if(fin?.stage==='play'){
+    const s=backOut(Math.min(1,fin.t/.25));
+    ctx.save(); ctx.translate(W/2,H*.4); ctx.rotate(-.04); ctx.scale(s,s);
+    ctx.font=`${Math.min(58,H*.25)}px ${FONT}`; ctx.lineWidth=9;
+    ctx.strokeText('ДОБИВАНИЕ!',0,0); ctx.fillStyle=THEME.red; ctx.fillText('ДОБИВАНИЕ!',0,0);
+    ctx.font=`20px ${FONT}`; ctx.lineWidth=5;
+    const sub={trash:'В мусорку!',erase:'Стёрт ластиком',plane:'Улетел самолётиком'}[fin.type];
+    ctx.strokeText(sub,0,30); ctx.fillStyle=THEME.pencil; ctx.fillText(sub,0,30); ctx.restore();
+  }
   if(G.ev?.type==='dark'){                         // темнота с «фонариками» вокруг бойцов
     ctx.globalAlpha=.95*Math.min(1,G.ev.t*2,(5.5-G.ev.t)*3); ctx.fillStyle=THEME.night;
     ctx.beginPath(); ctx.rect(-30,46,W+60,H);
@@ -901,7 +1173,13 @@ function draw(now){
   const k=S*dpr;
   ctx.setTransform(k,0,0,k,(Math.random()-.5)*G.shake*k,(Math.random()-.5)*G.shake*k);
   ctx.lineCap=ctx.lineJoin='round';
-  drawBackdrop(); F.forEach(f=>drawFighter(f)); drawShots(); drawEffects(); drawOverlay(); drawHud();
+  // камера: на нокауте и добивании наезжает на проигравшего
+  const fin=G.finish, focus=fin?F[1-fin.w]:G.slow>0?F.find(f=>f.state==='ko'):null;
+  G.zoom+=((focus?1.22:1)-G.zoom)*.08; G.zx+=((focus?focus.x:W/2)-G.zx)*.08;
+  ctx.save(); ctx.translate(G.zx,GY); ctx.scale(G.zoom,G.zoom); ctx.translate(-G.zx,-GY);
+  drawBackdrop(); F.forEach(f=>drawFighter(f)); drawShots(); drawEffects(); drawFinish();
+  ctx.restore();
+  drawOverlay(); drawHud();
 }
 
 // ---------- экран ----------
@@ -920,6 +1198,8 @@ function layout(){
 new ResizeObserver(layout).observe(app);
 layout();
 document.fonts?.load('20px Neucha');
+
+$('#mText').textContent=MENU_TEXT; updDiary(); startDemo();
 
 let last=performance.now();
 function frame(now){
