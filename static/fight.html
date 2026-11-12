@@ -183,11 +183,11 @@ function setWorld(i){
 const KINDS=['blot','blink','stomp','plane','laser','pounce','bolt','bomb'];
 
 // Бот видит то же, что игрок, и «нажимает» те же кнопки. Уровни отличаются скоростью реакции,
-// частотой решений, числом ошибок и напором.
+// частотой решений, числом ошибок и напором; skill — как часто ловит на ошибках, idle — как часто зевает.
 const LEVELS=[
-  {name:'лёгкий',note:'для разминки',react:.36,think:.36,miss:.58,aggro:.2,guard:.1},
-  {name:'умный',note:'блокирует и наказывает',react:.16,think:.17,miss:.36,aggro:.36,guard:.24},
-  {name:'босс',note:'ошибается редко',react:.12,think:.12,miss:.25,aggro:.44,guard:.3},
+  {name:'лёгкий',note:'для разминки',react:.36,think:.36,miss:.58,aggro:.2,guard:.1,skill:.3,idle:.25},
+  {name:'умный',note:'блокирует и наказывает',react:.19,think:.18,miss:.4,aggro:.33,guard:.22,skill:.5,idle:.18},
+  {name:'босс',note:'ошибается редко',react:.15,think:.15,miss:.33,aggro:.38,guard:.26,skill:.65,idle:.14},
 ];
 let vsBot=false, botLv=1, unlocked=false, lastSetup=null;
 try{
@@ -529,7 +529,8 @@ function botUpdate(p,dt){
   if((B.t-=dt)>0) return;
   B.t=L.think*(.6+Math.random()*.8);
 
-  const chance=x=>Math.random()<x, tap=a=>me.buf[a]=.15, sharp=!chance(L.miss);
+  const chance=x=>Math.random()<x, tap=a=>me.buf[a]=.15, sharp=!chance(L.miss), skilled=chance(L.skill);
+  if(chance(L.idle)) return hold({});                        // зевнул: стоит и ничего не делает
   const dx=o.x-me.x, dist=Math.abs(dx), fwd=dx>0?'r':'l', back=dx>0?'l':'r', ground=me.y>=0;
   const oa=ATK[o.state], left=oa?oa.wind+oa.act+oa.rec-o.t:0;
   const inFront=o.face*(me.x-o.x)>0;
@@ -555,9 +556,9 @@ function botUpdate(p,dt){
   else if(threat&&sharp&&ground){                            // соперник замахнулся — блок или рывок назад
     if(o.state!=='cast'&&!cornered&&chance(aggro*.25)) tap('d'+back); else h.b=true;
   }
-  else if(oa&&o.done&&left>.12&&dist<ATK.punch.reach-4) tap(dist>55&&left>.22?'k':'p'); // наказать за промах
-  else if(o.state==='hit'&&dist<ATK.kick.reach-4) tap(dist>56?'k':'p');                // добить, пока оглушён
-  else if(o.y<-25&&o.vy>0&&dist<70&&sharp) tap('p');         // сбить в прыжке
+  else if(skilled&&oa&&o.done&&left>.12&&dist<ATK.punch.reach-4) tap(dist>55&&left>.22?'k':'p'); // наказать за промах
+  else if(skilled&&o.state==='hit'&&dist<ATK.kick.reach-4) tap(dist>56?'k':'p');                // добить, пока оглушён
+  else if(skilled&&o.y<-25&&o.vy>0&&dist<70&&sharp) tap('p');         // сбить в прыжке
   else if(me.y<0&&dist<80) tap('k');                         // удар ногой с прыжка
   else if(me.energy>=100&&o.y>=0&&dist>=r[0]&&dist<=r[1]) tap('s');
   else if(cornered&&dist<60&&chance(.35)){h[fwd]=true; tap('u');}                      // выпрыгнуть из угла
