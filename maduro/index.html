@@ -402,11 +402,12 @@ function poseHumanP(r,dt){
 
 /* ================= ПЕРСОНАЖИ: СКЕЛЕТНЫЕ МОДЕЛИ (Mixamo) ================= */
 const BASE={};
-const MODEL_URLS=n=>[`https://cdn.jsdelivr.net/gh/mrdoob/three.js@r160/examples/models/gltf/${n}.glb`,`https://raw.githubusercontent.com/mrdoob/three.js/r160/examples/models/gltf/${n}.glb`];
+async function loadB64(L,url){const r=await fetch(url);if(!r.ok)throw new Error(url);const t=(await r.text()).trim();const bin=new Uint8Array(t.length*3/4|0);const raw=atob(t);for(let i=0;i<raw.length;i++)bin[i]=raw.charCodeAt(i);return L.parseAsync(bin.buffer.slice(0,raw.length),'');}
+const MODEL_URLS=n=>[`models/${n}.b64.txt`,`https://cdn.jsdelivr.net/gh/mrdoob/three.js@r160/examples/models/gltf/${n}.glb`,`https://raw.githubusercontent.com/mrdoob/three.js/r160/examples/models/gltf/${n}.glb`];
 async function loadBases(onProg){
   const L=new GLTFLoader();const names={soldier:'Soldier',xbot:'Xbot'};const prog={soldier:0,xbot:0};
   await Promise.all(Object.keys(names).map(async k=>{
-    for(const u of MODEL_URLS(names[k])){try{const g=await L.loadAsync(u,e=>{if(e.total){prog[k]=e.loaded/e.total;onProg&&onProg((prog.soldier+prog.xbot)/2);}});prepBase(k,g);return;}catch(e){console.warn('model',u,e);}}
+    for(const u of MODEL_URLS(names[k])){try{const g=u.endsWith('.txt')?await loadB64(L,u):await L.loadAsync(u,e=>{if(e.total){prog[k]=e.loaded/e.total;onProg&&onProg((prog.soldier+prog.xbot)/2);}});prepBase(k,g);return;}catch(e){console.warn('model',u,e);}}
   }));
   return !!(BASE.soldier&&BASE.xbot);
 }
@@ -574,10 +575,10 @@ function poseHuman(r,dt){if(!r.skinned)return poseHumanP(r,dt);
 
 /* ================= ЛИЦА: голова с мимикой (52 blendshape, ARKit) ================= */
 let FACE=null;
-const FACE_URLS=['https://cdn.jsdelivr.net/gh/mrdoob/three.js@r160/examples/models/gltf/facecap.glb','https://raw.githubusercontent.com/mrdoob/three.js/r160/examples/models/gltf/facecap.glb'];
-async function loadFace(rnd){const ktx=new KTX2Loader().setTranscoderPath('https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/libs/basis/').detectSupport(rnd);
+const FACE_URLS=['models/facecap.b64.txt','https://cdn.jsdelivr.net/gh/mrdoob/three.js@r160/examples/models/gltf/facecap.glb','https://raw.githubusercontent.com/mrdoob/three.js/r160/examples/models/gltf/facecap.glb'];
+async function loadFace(rnd){const ktx=new KTX2Loader().setTranscoderPath(location.protocol==='file:'?'https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/libs/basis/':'libs/basis/').detectSupport(rnd);
   const L=new GLTFLoader().setKTX2Loader(ktx).setMeshoptDecoder(MeshoptDecoder);
-  for(const u of FACE_URLS){try{const g=await L.loadAsync(u);prepFace(g);return true;}catch(e){console.warn('face',u,e);}}return false;}
+  for(const u of FACE_URLS){try{const g=u.endsWith('.txt')?await loadB64(L,u):await L.loadAsync(u);prepFace(g);return true;}catch(e){console.warn('face',u,e);}}return false;}
 function prepFace(g){const root=g.scene,w=new THREE.Group();w.add(root);w.rotation.y=PI;w.updateMatrixWorld(true);const parts={};const v=new V3();
   root.traverse(o=>{if(!o.isMesh)return;const p=o.geometry.attributes.position,a=new Float32Array(p.count*3);for(let i=0;i<p.count;i++){v.fromBufferAttribute(p,i).applyMatrix4(o.matrixWorld);a[i*3]=v.x;a[i*3+1]=v.y;a[i*3+2]=v.z;}
     o.geometry.setAttribute('aH',new THREE.BufferAttribute(a,3));o.geometry.userData.keep=1;parts[o.parent.name]=o;});
